@@ -2,6 +2,7 @@
 // ABOUTME: Supports relative-first reference resolution for chain/compound lookups.
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::error::ValidationError;
 use crate::models::Table;
@@ -18,11 +19,13 @@ impl Registry {
     }
 
     pub fn register(&mut self, fqid: String, table: Table) -> Result<(), ValidationError> {
-        if self.tables.contains_key(&fqid) {
-            return Err(ValidationError::DuplicateId { id: fqid });
+        match self.tables.entry(fqid) {
+            Entry::Occupied(e) => Err(ValidationError::DuplicateId { id: e.key().clone() }),
+            Entry::Vacant(e) => {
+                e.insert(table);
+                Ok(())
+            }
         }
-        self.tables.insert(fqid, table);
-        Ok(())
     }
 
     pub fn get(&self, fqid: &str) -> Option<&Table> {
