@@ -34,10 +34,7 @@ pub fn validate_namespace(namespace: &str) -> Result<(), ValidationError> {
     Ok(())
 }
 
-pub fn validate_result_entry(
-    entry: &ResultEntry,
-    table_name: &str,
-) -> Result<(), ValidationError> {
+pub fn validate_result_entry(entry: &ResultEntry, table_name: &str) -> Result<(), ValidationError> {
     if entry.max < entry.min {
         return Err(ValidationError::RangeReversed {
             table: table_name.to_string(),
@@ -52,7 +49,12 @@ pub fn validate_result_entry(
 /// Does NOT check cross-references (chains, compound refs).
 pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
     match table {
-        Table::Simple { name, roll, results, .. } => {
+        Table::Simple {
+            name,
+            roll,
+            results,
+            ..
+        } => {
             // Validate dice expression is parseable
             diceman::parse(roll).map_err(|e| ValidationError::InvalidDiceExpression {
                 table: name.clone(),
@@ -66,12 +68,13 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             }
 
             // Get dice expression range via simulation
-            let sim = diceman::simulate_seeded(roll, 100_000, 42)
-                .map_err(|e| ValidationError::InvalidDiceExpression {
+            let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
+                ValidationError::InvalidDiceExpression {
                     table: name.clone(),
                     expr: roll.clone(),
                     reason: e.to_string(),
-                })?;
+                }
+            })?;
             let dice_min = sim.min as u32;
             let dice_max = sim.max as u32;
 
@@ -86,7 +89,9 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                 }
             }
 
-            let missing: Vec<u32> = coverage.iter().enumerate()
+            let missing: Vec<u32> = coverage
+                .iter()
+                .enumerate()
                 .filter(|(_, count)| **count == 0)
                 .map(|(i, _)| i as u32 + dice_min)
                 .collect();
@@ -97,7 +102,9 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                 });
             }
 
-            let overlapping: Vec<u32> = coverage.iter().enumerate()
+            let overlapping: Vec<u32> = coverage
+                .iter()
+                .enumerate()
                 .filter(|(_, count)| **count > 1)
                 .map(|(i, _)| i as u32 + dice_min)
                 .collect();
@@ -125,9 +132,7 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
 
     for (fqid, table) in registry.all_tables() {
         // Extract the namespace from the FQID (everything up to the last dot)
-        let current_namespace = fqid.rsplit_once('.')
-            .map(|(ns, _)| ns)
-            .unwrap_or("");
+        let current_namespace = fqid.rsplit_once('.').map(|(ns, _)| ns).unwrap_or("");
 
         match table {
             Table::Simple { name, results, .. } => {
@@ -196,15 +201,28 @@ mod tests {
 
     #[test]
     fn valid_result_entry() {
-        let entry = ResultEntry { min: 1, max: 3, text: Some("test".into()), chain: None };
+        let entry = ResultEntry {
+            min: 1,
+            max: 3,
+            text: Some("test".into()),
+            chain: None,
+        };
         assert!(validate_result_entry(&entry, "test-table").is_ok());
     }
 
     #[test]
     fn reversed_range_entry() {
-        let entry = ResultEntry { min: 5, max: 2, text: Some("test".into()), chain: None };
+        let entry = ResultEntry {
+            min: 5,
+            max: 2,
+            text: Some("test".into()),
+            chain: None,
+        };
         let err = validate_result_entry(&entry, "test-table").unwrap_err();
-        assert!(matches!(err, crate::error::ValidationError::RangeReversed { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ValidationError::RangeReversed { .. }
+        ));
     }
 
     #[test]
@@ -214,8 +232,18 @@ mod tests {
             tags: vec![],
             roll: "1d6".into(),
             results: vec![
-                ResultEntry { min: 1, max: 3, text: Some("Low".into()), chain: None },
-                ResultEntry { min: 4, max: 6, text: Some("High".into()), chain: None },
+                ResultEntry {
+                    min: 1,
+                    max: 3,
+                    text: Some("Low".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 4,
+                    max: 6,
+                    text: Some("High".into()),
+                    chain: None,
+                },
             ],
         };
         assert!(validate_table(&table).is_ok());
@@ -228,12 +256,25 @@ mod tests {
             tags: vec![],
             roll: "1d6".into(),
             results: vec![
-                ResultEntry { min: 1, max: 2, text: Some("Low".into()), chain: None },
-                ResultEntry { min: 5, max: 6, text: Some("High".into()), chain: None },
+                ResultEntry {
+                    min: 1,
+                    max: 2,
+                    text: Some("Low".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 5,
+                    max: 6,
+                    text: Some("High".into()),
+                    chain: None,
+                },
             ],
         };
         let err = validate_table(&table).unwrap_err();
-        assert!(matches!(err, crate::error::ValidationError::RangeGap { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ValidationError::RangeGap { .. }
+        ));
     }
 
     #[test]
@@ -243,12 +284,25 @@ mod tests {
             tags: vec![],
             roll: "1d6".into(),
             results: vec![
-                ResultEntry { min: 1, max: 4, text: Some("Low".into()), chain: None },
-                ResultEntry { min: 3, max: 6, text: Some("High".into()), chain: None },
+                ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Low".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 3,
+                    max: 6,
+                    text: Some("High".into()),
+                    chain: None,
+                },
             ],
         };
         let err = validate_table(&table).unwrap_err();
-        assert!(matches!(err, crate::error::ValidationError::RangeOverlap { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ValidationError::RangeOverlap { .. }
+        ));
     }
 
     #[test]
@@ -257,12 +311,18 @@ mod tests {
             name: "BadDice".into(),
             tags: vec![],
             roll: "1z6".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 6, text: Some("X".into()), chain: None },
-            ],
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("X".into()),
+                chain: None,
+            }],
         };
         let err = validate_table(&table).unwrap_err();
-        assert!(matches!(err, crate::error::ValidationError::InvalidDiceExpression { .. }));
+        assert!(matches!(
+            err,
+            crate::error::ValidationError::InvalidDiceExpression { .. }
+        ));
     }
 
     use crate::registry::Registry;
@@ -279,30 +339,52 @@ mod tests {
     #[test]
     fn validate_refs_catches_broken_chain() {
         let mut registry = Registry::new();
-        registry.register("test.broken".into(), Table::Simple {
-            name: "Broken".into(),
-            tags: vec![],
-            roll: "1d4".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 2, text: Some("X".into()),
-                    chain: Some(vec!["nonexistent".into()]) },
-                ResultEntry { min: 3, max: 4, text: Some("Y".into()), chain: None },
-            ],
-        }).unwrap();
+        registry
+            .register(
+                "test.broken".into(),
+                Table::Simple {
+                    name: "Broken".into(),
+                    tags: vec![],
+                    roll: "1d4".into(),
+                    results: vec![
+                        ResultEntry {
+                            min: 1,
+                            max: 2,
+                            text: Some("X".into()),
+                            chain: Some(vec!["nonexistent".into()]),
+                        },
+                        ResultEntry {
+                            min: 3,
+                            max: 4,
+                            text: Some("Y".into()),
+                            chain: None,
+                        },
+                    ],
+                },
+            )
+            .unwrap();
 
         let errors = validate_references(&registry).unwrap_err();
         assert!(!errors.is_empty());
-        assert!(matches!(&errors[0], ValidationError::UnresolvedChain { .. }));
+        assert!(matches!(
+            &errors[0],
+            ValidationError::UnresolvedChain { .. }
+        ));
     }
 
     #[test]
     fn validate_refs_catches_broken_compound() {
         let mut registry = Registry::new();
-        registry.register("test.comp".into(), Table::Compound {
-            name: "Bad Compound".into(),
-            tags: vec![],
-            tables: vec!["nonexistent-a".into(), "nonexistent-b".into()],
-        }).unwrap();
+        registry
+            .register(
+                "test.comp".into(),
+                Table::Compound {
+                    name: "Bad Compound".into(),
+                    tags: vec![],
+                    tables: vec!["nonexistent-a".into(), "nonexistent-b".into()],
+                },
+            )
+            .unwrap();
 
         let errors = validate_references(&registry).unwrap_err();
         assert_eq!(errors.len(), 2);

@@ -94,7 +94,12 @@ results:
 "#;
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
-            Table::Simple { name, tags, roll, results } => {
+            Table::Simple {
+                name,
+                tags,
+                roll,
+                results,
+            } => {
                 assert_eq!(name, "Test Table");
                 assert_eq!(tags, vec!["test"]);
                 assert_eq!(roll, "1d6");
@@ -159,7 +164,10 @@ tables:
             Table::Compound { name, tags, tables } => {
                 assert_eq!(name, "Quick NPC");
                 assert_eq!(tags, vec!["npc", "generator"]);
-                assert_eq!(tables, vec!["npc-occupation", "npc-disposition", "npc-quirk"]);
+                assert_eq!(
+                    tables,
+                    vec!["npc-occupation", "npc-disposition", "npc-quirk"]
+                );
             }
             _ => panic!("Expected Compound table"),
         }

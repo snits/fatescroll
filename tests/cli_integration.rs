@@ -17,7 +17,10 @@ fn fixtures_path(name: &str) -> PathBuf {
 #[test]
 fn validate_valid_collection() {
     let output = fatescroll_bin()
-        .args(["validate", &fixtures_path("valid-collection").to_string_lossy()])
+        .args([
+            "validate",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
         .output()
         .expect("failed to run fatescroll");
     assert!(
