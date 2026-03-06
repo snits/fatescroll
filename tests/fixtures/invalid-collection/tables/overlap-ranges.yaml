@@ -1,0 +1,11 @@
+name: Overlap Ranges Table
+type: simple
+tags: []
+roll: 1d6
+results:
+  - min: 1
+    max: 4
+    text: Low
+  - min: 3
+    max: 6
+    text: High
