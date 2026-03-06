@@ -36,6 +36,7 @@ impl Registry {
     /// Resolve a reference using relative-first resolution:
     /// 1. Try current_namespace + "." + reference
     /// 2. Try reference as a fully qualified ID
+    ///
     /// Returns (fqid, &Table) on success.
     pub fn resolve(&self, reference: &str, current_namespace: &str) -> Option<(&str, &Table)> {
         let relative_id = format!("{current_namespace}.{reference}");
