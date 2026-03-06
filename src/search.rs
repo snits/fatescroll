@@ -7,26 +7,32 @@ use crate::registry::Registry;
 /// Search by table name (case-insensitive substring match).
 pub fn search_by_name<'a>(registry: &'a Registry, query: &str) -> Vec<(&'a str, &'a Table)> {
     let query_lower = query.to_lowercase();
-    registry.all_tables()
+    registry
+        .all_tables()
         .filter(|(_, table)| table.name().to_lowercase().contains(&query_lower))
         .collect()
 }
 
 /// Search by tag (exact match).
 pub fn search_by_tag<'a>(registry: &'a Registry, tag: &str) -> Vec<(&'a str, &'a Table)> {
-    registry.all_tables()
+    registry
+        .all_tables()
         .filter(|(_, table)| table.tags().iter().any(|t| t == tag))
         .collect()
 }
 
 /// Search by namespace prefix (FQID starts with the given namespace).
-pub fn search_by_namespace<'a>(registry: &'a Registry, namespace: &str) -> Vec<(&'a str, &'a Table)> {
+pub fn search_by_namespace<'a>(
+    registry: &'a Registry,
+    namespace: &str,
+) -> Vec<(&'a str, &'a Table)> {
     let prefix = if namespace.ends_with('.') {
         namespace.to_string()
     } else {
         format!("{namespace}.")
     };
-    registry.all_tables()
+    registry
+        .all_tables()
         .filter(|(fqid, _)| fqid.starts_with(&prefix))
         .collect()
 }
@@ -39,30 +45,51 @@ mod tests {
 
     fn build_search_registry() -> Registry {
         let mut reg = Registry::new();
-        reg.register("dmg.treasure.gems".into(), Table::Simple {
-            name: "Gem Type".into(),
-            tags: vec!["treasure".into(), "gems".into()],
-            roll: "1d6".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 6, text: Some("Ruby".into()), chain: None },
-            ],
-        }).unwrap();
-        reg.register("dmg.encounters.wilderness".into(), Table::Simple {
-            name: "Wilderness Encounter".into(),
-            tags: vec!["encounter".into(), "wilderness".into()],
-            roll: "1d6".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 6, text: Some("Wolves".into()), chain: None },
-            ],
-        }).unwrap();
-        reg.register("core.npc.occupation".into(), Table::Simple {
-            name: "NPC Occupation".into(),
-            tags: vec!["npc".into()],
-            roll: "1d6".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 6, text: Some("Smith".into()), chain: None },
-            ],
-        }).unwrap();
+        reg.register(
+            "dmg.treasure.gems".into(),
+            Table::Simple {
+                name: "Gem Type".into(),
+                tags: vec!["treasure".into(), "gems".into()],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Ruby".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "dmg.encounters.wilderness".into(),
+            Table::Simple {
+                name: "Wilderness Encounter".into(),
+                tags: vec!["encounter".into(), "wilderness".into()],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Wolves".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "core.npc.occupation".into(),
+            Table::Simple {
+                name: "NPC Occupation".into(),
+                tags: vec!["npc".into()],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Smith".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
         reg
     }
 

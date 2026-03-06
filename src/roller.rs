@@ -10,8 +10,7 @@ use crate::registry::Registry;
 
 const MAX_CHAIN_DEPTH: usize = 10;
 
-static DICE_INTERPOLATION: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
+static DICE_INTERPOLATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
 pub fn roll(registry: &Registry, table_id: &str) -> Result<RollResult, RollError> {
     roll_with_rng(registry, table_id, &mut diceman::FastRng::new())
@@ -55,7 +54,10 @@ fn roll_recursive(
     };
 
     // Extract namespace from resolved FQID for child resolution
-    let namespace = resolved_fqid.rsplit_once('.').map(|(ns, _)| ns).unwrap_or("");
+    let namespace = resolved_fqid
+        .rsplit_once('.')
+        .map(|(ns, _)| ns)
+        .unwrap_or("");
 
     match table.clone() {
         Table::Simple {
@@ -64,13 +66,12 @@ fn roll_recursive(
             results,
             ..
         } => {
-            let dice_result = diceman::roll_with_rng(&roll_expr, rng).map_err(|e| {
-                RollError::DiceEvaluation {
+            let dice_result =
+                diceman::roll_with_rng(&roll_expr, rng).map_err(|e| RollError::DiceEvaluation {
                     table: name.clone(),
                     expr: roll_expr.clone(),
                     reason: e.to_string(),
-                }
-            })?;
+                })?;
 
             let roll_value = dice_result.total;
             if roll_value < 0 {
@@ -152,8 +153,18 @@ mod tests {
                 tags: vec![],
                 roll: "1d6".into(),
                 results: vec![
-                    ResultEntry { min: 1, max: 3, text: Some("Low".into()), chain: None },
-                    ResultEntry { min: 4, max: 6, text: Some("High".into()), chain: None },
+                    ResultEntry {
+                        min: 1,
+                        max: 3,
+                        text: Some("Low".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 4,
+                        max: 6,
+                        text: Some("High".into()),
+                        chain: None,
+                    },
                 ],
             },
         )
@@ -172,7 +183,12 @@ mod tests {
                         text: Some("Follow up".into()),
                         chain: Some(vec!["simple".into()]),
                     },
-                    ResultEntry { min: 3, max: 4, text: Some("No chain".into()), chain: None },
+                    ResultEntry {
+                        min: 3,
+                        max: 4,
+                        text: Some("No chain".into()),
+                        chain: None,
+                    },
                 ],
             },
         )
@@ -241,23 +257,36 @@ mod tests {
     fn roll_with_chain_triggered() {
         // Use a table where every result chains, so we always exercise chain resolution
         let mut reg = Registry::new();
-        reg.register("ns.parent".into(), Table::Simple {
-            name: "Parent".into(),
-            tags: vec![],
-            roll: "1d4".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 4, text: Some("Always chains".into()),
-                    chain: Some(vec!["child".into()]) },
-            ],
-        }).unwrap();
-        reg.register("ns.child".into(), Table::Simple {
-            name: "Child".into(),
-            tags: vec![],
-            roll: "1d6".into(),
-            results: vec![
-                ResultEntry { min: 1, max: 6, text: Some("Child result".into()), chain: None },
-            ],
-        }).unwrap();
+        reg.register(
+            "ns.parent".into(),
+            Table::Simple {
+                name: "Parent".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Always chains".into()),
+                    chain: Some(vec!["child".into()]),
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.child".into(),
+            Table::Simple {
+                name: "Child".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Child result".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
 
         let mut rng = diceman::FastRng::with_seed(42);
         let result = roll_with_rng(&reg, "ns.parent", &mut rng).unwrap();

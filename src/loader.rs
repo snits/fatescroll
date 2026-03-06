@@ -47,12 +47,7 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
 
         let dir_path = manifest.base_path.join(&dir_entry.path);
         if !dir_path.is_dir() {
-            errors.push(
-                ValidationError::DirectoryNotFound {
-                    path: dir_path,
-                }
-                .into(),
-            );
+            errors.push(ValidationError::DirectoryNotFound { path: dir_path }.into());
             continue;
         }
 
@@ -164,7 +159,11 @@ mod tests {
         assert!(registry.get("test.npc.npc-disposition").is_some());
         assert!(registry.get("test.npc.npc-quirk").is_some());
         assert!(registry.get("test.npc.quick-npc").is_some());
-        assert!(registry.get("test.encounters.wilderness-encounter").is_some());
+        assert!(
+            registry
+                .get("test.encounters.wilderness-encounter")
+                .is_some()
+        );
         assert!(registry.get("test.encounters.animal-type").is_some());
     }
 

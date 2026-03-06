@@ -34,10 +34,17 @@ pub enum ValidationError {
     RangeGap { table: String, missing: Vec<u32> },
 
     #[error("range overlap in table '{table}': values {overlapping:?} covered multiple times")]
-    RangeOverlap { table: String, overlapping: Vec<u32> },
+    RangeOverlap {
+        table: String,
+        overlapping: Vec<u32>,
+    },
 
     #[error("invalid dice expression '{expr}' in table '{table}': {reason}")]
-    InvalidDiceExpression { table: String, expr: String, reason: String },
+    InvalidDiceExpression {
+        table: String,
+        expr: String,
+        reason: String,
+    },
 
     #[error("invalid namespace '{namespace}': {reason}")]
     InvalidNamespace { namespace: String, reason: String },
@@ -82,5 +89,9 @@ pub enum RollError {
     NegativeRoll { value: i64 },
 
     #[error("dice evaluation failed for '{expr}' in table '{table}': {reason}")]
-    DiceEvaluation { table: String, expr: String, reason: String },
+    DiceEvaluation {
+        table: String,
+        expr: String,
+        reason: String,
+    },
 }

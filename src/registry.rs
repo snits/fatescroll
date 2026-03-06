@@ -21,7 +21,9 @@ impl Registry {
 
     pub fn register(&mut self, fqid: String, table: Table) -> Result<(), ValidationError> {
         match self.tables.entry(fqid) {
-            Entry::Occupied(e) => Err(ValidationError::DuplicateId { id: e.key().clone() }),
+            Entry::Occupied(e) => Err(ValidationError::DuplicateId {
+                id: e.key().clone(),
+            }),
             Entry::Vacant(e) => {
                 e.insert(table);
                 Ok(())
@@ -84,7 +86,8 @@ mod tests {
     #[test]
     fn register_and_get() {
         let mut reg = Registry::new();
-        reg.register("test.foo".into(), simple_table("Foo")).unwrap();
+        reg.register("test.foo".into(), simple_table("Foo"))
+            .unwrap();
         assert!(reg.get("test.foo").is_some());
         assert!(reg.get("test.bar").is_none());
     }
@@ -92,7 +95,8 @@ mod tests {
     #[test]
     fn duplicate_registration_fails() {
         let mut reg = Registry::new();
-        reg.register("test.foo".into(), simple_table("Foo")).unwrap();
+        reg.register("test.foo".into(), simple_table("Foo"))
+            .unwrap();
         let err = reg.register("test.foo".into(), simple_table("Foo2"));
         assert!(err.is_err());
     }

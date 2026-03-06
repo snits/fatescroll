@@ -6,7 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 #[derive(Parser)]
-#[command(name = "fatescroll", version, about = "RPG random table manager and roller")]
+#[command(
+    name = "fatescroll",
+    version,
+    about = "RPG random table manager and roller"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
