@@ -2,7 +2,7 @@
 // ABOUTME: Thin wrapper over the fatescroll library using clap.
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 #[derive(Parser)]
@@ -88,13 +88,13 @@ fn main() {
     }
 }
 
-fn cmd_validate(collection: &PathBuf) -> Result<(), fatescroll::Error> {
+fn cmd_validate(collection: &Path) -> Result<(), fatescroll::Error> {
     let _registry = fatescroll::load_collection(collection)?;
     println!("Collection is valid.");
     Ok(())
 }
 
-fn cmd_roll(collection: &PathBuf, table_id: &str) -> Result<(), fatescroll::Error> {
+fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> {
     let registry = fatescroll::load_collection(collection)?;
     let result = fatescroll::roller::roll(&registry, table_id)?;
     print_roll_result(&result, 0);
@@ -123,7 +123,7 @@ fn print_roll_result(result: &fatescroll::RollResult, indent: usize) {
 }
 
 fn cmd_search(
-    collection: &PathBuf,
+    collection: &Path,
     name: Option<&str>,
     tag: Option<&str>,
     namespace: Option<&str>,
@@ -137,8 +137,11 @@ fn cmd_search(
     } else if let Some(ns) = namespace {
         fatescroll::search::search_by_namespace(&registry, ns)
     } else {
-        eprintln!("Specify --name, --tag, or --namespace");
-        process::exit(1);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "specify --name, --tag, or --namespace",
+        )
+        .into());
     };
 
     if results.is_empty() {
@@ -157,7 +160,7 @@ fn cmd_search(
 }
 
 fn cmd_import(
-    collection: &PathBuf,
+    collection: &Path,
     target_dir: &str,
     files: &[PathBuf],
 ) -> Result<(), fatescroll::Error> {
