@@ -1,8 +1,9 @@
-// ABOUTME: Per-type validation for tables, result entries, and namespaces.
-// ABOUTME: Cross-reference validation (chain/compound refs) is separate; see loader.
+// ABOUTME: Validation for tables, result entries, namespaces, and cross-references.
+// ABOUTME: Per-type checks run during load; cross-ref checks run after registry is populated.
 
 use crate::error::ValidationError;
 use crate::models::{ResultEntry, Table};
+use crate::registry::Registry;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -117,6 +118,52 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
     }
 }
 
+/// Validate that all chain and compound table references resolve in the registry.
+/// Returns collected errors (not just the first one).
+pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationError>> {
+    let mut errors = Vec::new();
+
+    for (fqid, table) in registry.all_tables() {
+        // Extract the namespace from the FQID (everything up to the last dot)
+        let current_namespace = fqid.rsplit_once('.')
+            .map(|(ns, _)| ns)
+            .unwrap_or("");
+
+        match table {
+            Table::Simple { name, results, .. } => {
+                for entry in results {
+                    if let Some(chains) = &entry.chain {
+                        for chain_ref in chains {
+                            if registry.resolve(chain_ref, current_namespace).is_none() {
+                                errors.push(ValidationError::UnresolvedChain {
+                                    table: name.clone(),
+                                    reference: chain_ref.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            Table::Compound { name, tables, .. } => {
+                for table_ref in tables {
+                    if registry.resolve(table_ref, current_namespace).is_none() {
+                        errors.push(ValidationError::UnresolvedCompoundRef {
+                            table: name.clone(),
+                            reference: table_ref.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,6 +263,49 @@ mod tests {
         };
         let err = validate_table(&table).unwrap_err();
         assert!(matches!(err, crate::error::ValidationError::InvalidDiceExpression { .. }));
+    }
+
+    use crate::registry::Registry;
+    use std::path::PathBuf;
+
+    #[test]
+    fn validate_refs_valid_collection() {
+        let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/valid-collection/manifest.yaml");
+        let registry = crate::loader::load_collection(&manifest_path).unwrap();
+        assert!(validate_references(&registry).is_ok());
+    }
+
+    #[test]
+    fn validate_refs_catches_broken_chain() {
+        let mut registry = Registry::new();
+        registry.register("test.broken".into(), Table::Simple {
+            name: "Broken".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![
+                ResultEntry { min: 1, max: 2, text: Some("X".into()),
+                    chain: Some(vec!["nonexistent".into()]) },
+                ResultEntry { min: 3, max: 4, text: Some("Y".into()), chain: None },
+            ],
+        }).unwrap();
+
+        let errors = validate_references(&registry).unwrap_err();
+        assert!(!errors.is_empty());
+        assert!(matches!(&errors[0], ValidationError::UnresolvedChain { .. }));
+    }
+
+    #[test]
+    fn validate_refs_catches_broken_compound() {
+        let mut registry = Registry::new();
+        registry.register("test.comp".into(), Table::Compound {
+            name: "Bad Compound".into(),
+            tags: vec![],
+            tables: vec!["nonexistent-a".into(), "nonexistent-b".into()],
+        }).unwrap();
+
+        let errors = validate_references(&registry).unwrap_err();
+        assert_eq!(errors.len(), 2);
     }
 
     #[test]

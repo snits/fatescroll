@@ -1,0 +1,16 @@
+name: Bandit Strength
+type: simple
+tags:
+  - encounter
+  - bandit
+roll: 1d4
+results:
+  - min: 1
+    max: 2
+    text: Small group (2-3 bandits)
+  - min: 3
+    max: 3
+    text: Medium group (4-6 bandits)
+  - min: 4
+    max: 4
+    text: Large group (7-10 bandits)
