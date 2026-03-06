@@ -71,7 +71,20 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
             }
         };
 
-        for entry in entries.flatten() {
+        for entry_result in entries {
+            let entry = match entry_result {
+                Ok(e) => e,
+                Err(e) => {
+                    errors.push(
+                        LoadError::FileRead {
+                            path: dir_path.clone(),
+                            reason: e.to_string(),
+                        }
+                        .into(),
+                    );
+                    continue;
+                }
+            };
             let path = entry.path();
             let ext = path.extension().and_then(|e| e.to_str());
             if ext != Some("yaml") && ext != Some("yml") {
@@ -153,6 +166,24 @@ mod tests {
         assert!(registry.get("test.npc.quick-npc").is_some());
         assert!(registry.get("test.encounters.wilderness-encounter").is_some());
         assert!(registry.get("test.encounters.animal-type").is_some());
+    }
+
+    #[test]
+    fn load_invalid_collection_accumulates_errors() {
+        let manifest_path = fixtures_path("invalid-collection/manifest.yaml");
+        let err = load_collection(&manifest_path).unwrap_err();
+        // The invalid collection has tables with bad dice, gaps, overlaps,
+        // and reversed ranges. The loader should collect multiple errors.
+        match err {
+            Error::Load(LoadError::Multiple { errors }) => {
+                assert!(
+                    errors.len() >= 2,
+                    "Expected multiple errors, got {}",
+                    errors.len()
+                );
+            }
+            other => panic!("Expected LoadError::Multiple, got: {other}"),
+        }
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::collections::hash_map::Entry;
 use crate::error::ValidationError;
 use crate::models::Table;
 
+#[derive(Debug)]
 pub struct Registry {
     tables: HashMap<String, Table>,
 }
