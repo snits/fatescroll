@@ -97,6 +97,19 @@ mod tests {
     }
 
     #[test]
+    fn search_by_tag_is_case_sensitive() {
+        let reg = build_search_registry();
+        assert!(search_by_tag(&reg, "NPC").is_empty());
+    }
+
+    #[test]
+    fn search_by_namespace_with_trailing_dot() {
+        let reg = build_search_registry();
+        let results = search_by_namespace(&reg, "dmg.");
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
     fn search_no_results() {
         let reg = build_search_registry();
         assert!(search_by_name(&reg, "nonexistent").is_empty());
