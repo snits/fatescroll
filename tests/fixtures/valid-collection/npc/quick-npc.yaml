@@ -1,0 +1,9 @@
+name: Quick NPC Generator
+type: compound
+tags:
+  - npc
+  - generator
+tables:
+  - npc-occupation
+  - npc-disposition
+  - npc-quirk
