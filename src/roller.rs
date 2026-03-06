@@ -64,10 +64,11 @@ fn roll_recursive(
             results,
             ..
         } => {
-            let dice_result = diceman::roll_with_rng(&roll_expr, rng).map_err(|_| {
-                RollError::RollOutOfRange {
+            let dice_result = diceman::roll_with_rng(&roll_expr, rng).map_err(|e| {
+                RollError::DiceEvaluation {
                     table: name.clone(),
-                    value: 0,
+                    expr: roll_expr.clone(),
+                    reason: e.to_string(),
                 }
             })?;
 
@@ -237,16 +238,32 @@ mod tests {
     }
 
     #[test]
-    fn roll_with_chain() {
-        let reg = build_test_registry();
+    fn roll_with_chain_triggered() {
+        // Use a table where every result chains, so we always exercise chain resolution
+        let mut reg = Registry::new();
+        reg.register("ns.parent".into(), Table::Simple {
+            name: "Parent".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![
+                ResultEntry { min: 1, max: 4, text: Some("Always chains".into()),
+                    chain: Some(vec!["child".into()]) },
+            ],
+        }).unwrap();
+        reg.register("ns.child".into(), Table::Simple {
+            name: "Child".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            results: vec![
+                ResultEntry { min: 1, max: 6, text: Some("Child result".into()), chain: None },
+            ],
+        }).unwrap();
+
         let mut rng = diceman::FastRng::with_seed(42);
-        let result = roll_with_rng(&reg, "test.chained", &mut rng).unwrap();
-        if result.roll.unwrap() <= 2 {
-            assert_eq!(result.children.len(), 1);
-            assert_eq!(result.children[0].table_name, "Simple Test");
-        } else {
-            assert!(result.children.is_empty());
-        }
+        let result = roll_with_rng(&reg, "ns.parent", &mut rng).unwrap();
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].table_name, "Child");
+        assert!(result.children[0].text.is_some());
     }
 
     #[test]

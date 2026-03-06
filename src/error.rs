@@ -80,4 +80,7 @@ pub enum RollError {
 
     #[error("negative dice result ({value}) not supported")]
     NegativeRoll { value: i64 },
+
+    #[error("dice evaluation failed for '{expr}' in table '{table}': {reason}")]
+    DiceEvaluation { table: String, expr: String, reason: String },
 }
