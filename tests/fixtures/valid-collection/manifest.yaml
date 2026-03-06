@@ -1,0 +1,12 @@
+name: Test Collection
+version: "1.0"
+namespace: test
+author: ~
+min_tool_version: ~
+directories:
+  - path: terrain
+    namespace: test.terrain
+  - path: encounters
+    namespace: test.encounters
+  - path: npc
+    namespace: test.npc

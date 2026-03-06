@@ -1,0 +1,8 @@
+name: Bad Dice Expression
+type: simple
+tags: []
+roll: 1z6
+results:
+  - min: 1
+    max: 6
+    text: Something

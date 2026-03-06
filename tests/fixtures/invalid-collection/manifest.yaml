@@ -1,0 +1,8 @@
+name: Invalid Collection
+version: "1.0"
+namespace: invalid
+author: ~
+min_tool_version: ~
+directories:
+  - path: tables
+    namespace: invalid.tables
