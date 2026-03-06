@@ -1,0 +1,24 @@
+name: NPC Quirk
+type: simple
+tags:
+  - npc
+roll: 1d6
+results:
+  - min: 1
+    max: 1
+    text: Speaks in riddles
+  - min: 2
+    max: 2
+    text: Missing a finger
+  - min: 3
+    max: 3
+    text: Hums constantly
+  - min: 4
+    max: 4
+    text: Paranoid about magic
+  - min: 5
+    max: 5
+    text: Collects odd trinkets
+  - min: 6
+    max: 6
+    text: Has a pet raven

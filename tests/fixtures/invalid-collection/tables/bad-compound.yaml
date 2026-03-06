@@ -1,0 +1,6 @@
+name: Bad Compound
+type: compound
+tags: []
+tables:
+  - nonexistent-table-a
+  - nonexistent-table-b
