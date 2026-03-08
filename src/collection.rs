@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, LoadError};
+use crate::error::{Error, LoadError, ValidationError};
 use crate::models::Manifest;
 
 /// A discovered YAML file within a collection directory.
@@ -50,6 +50,7 @@ pub fn discover_collection_files(
     for dir_entry in &manifest.directories {
         let dir_path = manifest.base_path.join(&dir_entry.path);
         if !dir_path.is_dir() {
+            errors.push(ValidationError::DirectoryNotFound { path: dir_path }.into());
             continue;
         }
 

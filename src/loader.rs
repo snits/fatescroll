@@ -20,15 +20,26 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
         errors.push(e.into());
     }
 
-    // Track which directory namespaces we've validated
-    let mut validated_namespaces = std::collections::HashSet::new();
+    // Cache namespace validation results: true = valid, false = rejected
+    let mut namespace_valid: std::collections::HashMap<String, bool> =
+        std::collections::HashMap::new();
 
     for file in &files {
-        // Validate directory namespace once per unique namespace
-        if validated_namespaces.insert(&file.namespace)
-            && let Err(e) = validate_namespace(&file.namespace)
-        {
-            errors.push(e.into());
+        let is_valid = match namespace_valid.get(&file.namespace) {
+            Some(&valid) => valid,
+            None => {
+                let valid = match validate_namespace(&file.namespace) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        errors.push(e.into());
+                        false
+                    }
+                };
+                namespace_valid.insert(file.namespace.clone(), valid);
+                valid
+            }
+        };
+        if !is_valid {
             continue;
         }
 
