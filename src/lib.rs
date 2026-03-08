@@ -1,6 +1,7 @@
 // ABOUTME: Public API for the fatescroll random table library.
 // ABOUTME: Re-exports core types and provides top-level convenience functions.
 
+pub mod collection;
 pub mod error;
 pub mod fixer;
 pub mod loader;
