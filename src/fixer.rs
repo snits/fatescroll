@@ -5,7 +5,6 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::{Error, LoadError};
-use crate::models::Manifest;
 
 /// Describes the action taken on a single table file.
 #[derive(Debug)]
@@ -37,42 +36,30 @@ pub struct FixResult {
 /// - If it's correct, record as Ok.
 /// - If the file can't be parsed, record the error and continue.
 pub fn fix_collection(manifest_path: &Path) -> Result<FixResult, Error> {
-    if !manifest_path.exists() {
-        return Err(LoadError::ManifestNotFound {
-            path: manifest_path.to_path_buf(),
-        }
-        .into());
-    }
-
-    let manifest_contents = fs::read_to_string(manifest_path).map_err(|e| LoadError::FileRead {
-        path: manifest_path.to_path_buf(),
-        reason: e.to_string(),
-    })?;
-
-    let mut manifest: Manifest = serde_yaml::from_str(&manifest_contents)?;
-    manifest.base_path = manifest_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf();
+    let (_manifest, files, discovery_errors) =
+        crate::collection::discover_collection_files(manifest_path)?;
 
     let mut result = FixResult {
         actions: Vec::new(),
-        errors: Vec::new(),
+        errors: discovery_errors,
     };
 
-    for dir_entry in &manifest.directories {
-        let dir_path = manifest.base_path.join(&dir_entry.path);
-        if !dir_path.is_dir() {
-            continue;
-        }
-
-        let entries = match fs::read_dir(&dir_path) {
-            Ok(entries) => entries,
+    for file in files {
+        let mut value: serde_yaml::Value = match serde_yaml::from_str(&file.contents) {
+            Ok(v) => v,
             Err(e) => {
+                result.errors.push(Error::Yaml(e));
+                continue;
+            }
+        };
+
+        let mapping = match value.as_mapping_mut() {
+            Some(m) => m,
+            None => {
                 result.errors.push(
                     LoadError::FileRead {
-                        path: dir_path,
-                        reason: e.to_string(),
+                        path: file.path.clone(),
+                        reason: "YAML root is not a mapping".into(),
                     }
                     .into(),
                 );
@@ -80,103 +67,39 @@ pub fn fix_collection(manifest_path: &Path) -> Result<FixResult, Error> {
             }
         };
 
-        for entry_result in entries {
-            let entry = match entry_result {
-                Ok(e) => e,
-                Err(e) => {
-                    result.errors.push(
-                        LoadError::FileRead {
-                            path: dir_path.clone(),
-                            reason: e.to_string(),
-                        }
-                        .into(),
-                    );
-                    continue;
-                }
-            };
+        let id_key = serde_yaml::Value::String("id".to_string());
+        let expected_id = serde_yaml::Value::String(file.stem.clone());
 
-            let path = entry.path();
-            let ext = path.extension().and_then(|e| e.to_str());
-            if ext != Some("yaml") && ext != Some("yml") {
-                continue;
-            }
-
-            let stem = match path.file_stem().and_then(|s| s.to_str()) {
-                Some(s) => s.to_string(),
-                None => continue,
-            };
-
-            let contents = match fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(e) => {
-                    result.errors.push(
-                        LoadError::FileRead {
-                            path: path.clone(),
-                            reason: e.to_string(),
-                        }
-                        .into(),
-                    );
-                    continue;
-                }
-            };
-
-            let mut value: serde_yaml::Value = match serde_yaml::from_str(&contents) {
-                Ok(v) => v,
-                Err(e) => {
-                    result.errors.push(Error::Yaml(e));
-                    continue;
-                }
-            };
-
-            let mapping = match value.as_mapping_mut() {
-                Some(m) => m,
-                None => {
-                    result.errors.push(
-                        LoadError::FileRead {
-                            path: path.clone(),
-                            reason: "YAML root is not a mapping".into(),
-                        }
-                        .into(),
-                    );
-                    continue;
-                }
-            };
-
-            let id_key = serde_yaml::Value::String("id".to_string());
-            let expected_id = serde_yaml::Value::String(stem.clone());
-
-            if let Some(existing_id) = mapping.get(&id_key) {
-                if existing_id == &expected_id {
-                    result.actions.push(FixAction::Ok { path });
-                } else {
-                    let old_id = existing_id
-                        .as_str()
-                        .unwrap_or("<non-string>")
-                        .to_string();
-                    mapping.insert(id_key, expected_id);
-                    let yaml_out = serde_yaml::to_string(&value)?;
-                    fs::write(&path, &yaml_out)?;
-                    result.actions.push(FixAction::Corrected {
-                        path,
-                        old_id,
-                        id: stem,
-                    });
-                }
+        if let Some(existing_id) = mapping.get(&id_key) {
+            if existing_id == &expected_id {
+                result.actions.push(FixAction::Ok { path: file.path });
             } else {
-                // Insert id as the first field by rebuilding the mapping
-                let mut new_mapping = serde_yaml::Mapping::new();
-                new_mapping.insert(id_key, expected_id);
-                for (k, v) in mapping.iter() {
-                    new_mapping.insert(k.clone(), v.clone());
-                }
-                *mapping = new_mapping;
+                let old_id = existing_id
+                    .as_str()
+                    .unwrap_or("<non-string>")
+                    .to_string();
+                mapping.insert(id_key, expected_id);
                 let yaml_out = serde_yaml::to_string(&value)?;
-                fs::write(&path, &yaml_out)?;
-                result.actions.push(FixAction::Added {
-                    path,
-                    id: stem,
+                fs::write(&file.path, &yaml_out)?;
+                result.actions.push(FixAction::Corrected {
+                    path: file.path,
+                    old_id,
+                    id: file.stem,
                 });
             }
+        } else {
+            let mut new_mapping = serde_yaml::Mapping::new();
+            new_mapping.insert(id_key, expected_id);
+            for (k, v) in mapping.iter() {
+                new_mapping.insert(k.clone(), v.clone());
+            }
+            *mapping = new_mapping;
+            let yaml_out = serde_yaml::to_string(&value)?;
+            fs::write(&file.path, &yaml_out)?;
+            result.actions.push(FixAction::Added {
+                path: file.path,
+                id: file.stem,
+            });
         }
     }
 
