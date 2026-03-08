@@ -228,6 +228,7 @@ mod tests {
     #[test]
     fn valid_simple_table_full_coverage() {
         let table = Table::Simple {
+            id: "test".into(),
             name: "Test".into(),
             tags: vec![],
             roll: "1d6".into(),
@@ -252,6 +253,7 @@ mod tests {
     #[test]
     fn simple_table_with_gap() {
         let table = Table::Simple {
+            id: "gappy".into(),
             name: "Gappy".into(),
             tags: vec![],
             roll: "1d6".into(),
@@ -280,6 +282,7 @@ mod tests {
     #[test]
     fn simple_table_with_overlap() {
         let table = Table::Simple {
+            id: "overlapping".into(),
             name: "Overlapping".into(),
             tags: vec![],
             roll: "1d6".into(),
@@ -308,6 +311,7 @@ mod tests {
     #[test]
     fn simple_table_bad_dice_expression() {
         let table = Table::Simple {
+            id: "bad-dice".into(),
             name: "BadDice".into(),
             tags: vec![],
             roll: "1z6".into(),
@@ -343,6 +347,7 @@ mod tests {
             .register(
                 "test.broken".into(),
                 Table::Simple {
+                    id: "broken".into(),
                     name: "Broken".into(),
                     tags: vec![],
                     roll: "1d4".into(),
@@ -379,6 +384,7 @@ mod tests {
             .register(
                 "test.comp".into(),
                 Table::Compound {
+                    id: "bad-compound".into(),
                     name: "Bad Compound".into(),
                     tags: vec![],
                     tables: vec!["nonexistent-a".into(), "nonexistent-b".into()],
@@ -393,6 +399,7 @@ mod tests {
     #[test]
     fn compound_table_validates_ok() {
         let table = Table::Compound {
+            id: "compound".into(),
             name: "Compound".into(),
             tags: vec![],
             tables: vec!["a".into(), "b".into()],
