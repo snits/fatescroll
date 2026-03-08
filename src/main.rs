@@ -91,7 +91,7 @@ fn main() {
         Commands::Validate { collection, fix } => {
             resolve_collection(collection).and_then(|collection| {
                 if fix {
-                    cmd_fix(&collection)
+                    cmd_fix(&collection, false)
                 } else {
                     cmd_validate(&collection)
                 }
@@ -130,9 +130,14 @@ fn main() {
     }
 }
 
-fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
+fn cmd_fix(collection: &Path, update_refs: bool) -> Result<(), fatescroll::Error> {
     let manifest_path = collection.join("manifest.yaml");
-    let result = fatescroll::fixer::fix_collection(&manifest_path)?;
+    let ref_handling = if update_refs {
+        fatescroll::fixer::RefHandling::Update
+    } else {
+        fatescroll::fixer::RefHandling::WarnOnly
+    };
+    let result = fatescroll::fixer::fix_collection(&manifest_path, ref_handling)?;
 
     for action in &result.actions {
         match action {
@@ -152,7 +157,38 @@ fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
             fatescroll::fixer::FixAction::Ok { path } => {
                 println!("OK: {}", path.display());
             }
+            fatescroll::fixer::FixAction::UpdatedReference {
+                path,
+                old_ref,
+                new_ref,
+            } => {
+                println!(
+                    "Updated reference '{old_ref}' -> '{new_ref}' in {}",
+                    path.display()
+                );
+            }
         }
+    }
+
+    if !result.warnings.is_empty() {
+        eprintln!("\nWarnings:");
+        for warning in &result.warnings {
+            match warning {
+                fatescroll::fixer::FixWarning::StaleReference {
+                    path,
+                    reference,
+                    suggested,
+                } => {
+                    eprintln!(
+                        "  Warning: stale reference '{}' in {} (should be '{}')",
+                        reference,
+                        path.display(),
+                        suggested,
+                    );
+                }
+            }
+        }
+        eprintln!("\nUse --update-refs to automatically fix stale references.");
     }
 
     if !result.errors.is_empty() {
