@@ -345,6 +345,7 @@ mod tests {
     #[test]
     fn entry_below_dice_min() {
         let table = Table::Simple {
+            id: "below".into(),
             name: "Below".into(),
             tags: vec![],
             roll: "1d6".into(), // range 1-6
@@ -370,6 +371,7 @@ mod tests {
     #[test]
     fn entry_above_dice_max() {
         let table = Table::Simple {
+            id: "above".into(),
             name: "Above".into(),
             tags: vec![],
             roll: "1d6".into(), // range 1-6
