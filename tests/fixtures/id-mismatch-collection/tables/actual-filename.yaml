@@ -1,9 +1,9 @@
-id: bad-dice
-name: Bad Dice Expression
+id: wrong-id
+name: Mismatched Table
 type: simple
 tags: []
-roll: 1z6
+roll: 1d4
 results:
   - min: 1
-    max: 6
+    max: 4
     text: Something

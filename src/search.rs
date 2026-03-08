@@ -48,6 +48,7 @@ mod tests {
         reg.register(
             "dmg.treasure.gems".into(),
             Table::Simple {
+                id: "gems".into(),
                 name: "Gem Type".into(),
                 tags: vec!["treasure".into(), "gems".into()],
                 roll: "1d6".into(),
@@ -63,6 +64,7 @@ mod tests {
         reg.register(
             "dmg.encounters.wilderness".into(),
             Table::Simple {
+                id: "wilderness".into(),
                 name: "Wilderness Encounter".into(),
                 tags: vec!["encounter".into(), "wilderness".into()],
                 roll: "1d6".into(),
@@ -78,6 +80,7 @@ mod tests {
         reg.register(
             "core.npc.occupation".into(),
             Table::Simple {
+                id: "occupation".into(),
                 name: "NPC Occupation".into(),
                 tags: vec!["npc".into()],
                 roll: "1d6".into(),

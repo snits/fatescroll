@@ -60,6 +60,13 @@ pub enum ValidationError {
 
     #[error("duplicate table ID '{id}'")]
     DuplicateId { id: String },
+
+    #[error("table id '{id}' does not match filename '{filename}' in {path}")]
+    IdFilenameMismatch {
+        id: String,
+        filename: String,
+        path: PathBuf,
+    },
 }
 
 #[derive(Debug, Error)]
