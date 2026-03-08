@@ -53,6 +53,91 @@ pub struct FixResult {
     pub errors: Vec<Error>,
 }
 
+/// Extract all chain and compound table references from a parsed YAML value.
+fn extract_references(value: &serde_yaml::Value) -> Vec<String> {
+    let mut refs = Vec::new();
+    let mapping = match value.as_mapping() {
+        Some(m) => m,
+        None => return refs,
+    };
+
+    // Check results[].chain[] (Simple tables)
+    let results_key = serde_yaml::Value::String("results".into());
+    if let Some(serde_yaml::Value::Sequence(results)) = mapping.get(&results_key) {
+        let chain_key = serde_yaml::Value::String("chain".into());
+        for entry in results {
+            if let Some(serde_yaml::Value::Sequence(chains)) = entry.get(&chain_key) {
+                for chain in chains {
+                    if let Some(s) = chain.as_str() {
+                        refs.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Check tables[] (Compound tables)
+    let tables_key = serde_yaml::Value::String("tables".into());
+    if let Some(serde_yaml::Value::Sequence(tables)) = mapping.get(&tables_key) {
+        for table_ref in tables {
+            if let Some(s) = table_ref.as_str() {
+                refs.push(s.to_string());
+            }
+        }
+    }
+
+    refs
+}
+
+/// Update stale references in a parsed YAML value. Returns list of (old, new) pairs updated.
+fn update_references(
+    value: &mut serde_yaml::Value,
+    corrections: &std::collections::HashMap<String, String>,
+) -> Vec<(String, String)> {
+    let mut updated = Vec::new();
+    let mapping = match value.as_mapping_mut() {
+        Some(m) => m,
+        None => return updated,
+    };
+
+    // Update results[].chain[]
+    let results_key = serde_yaml::Value::String("results".into());
+    if let Some(serde_yaml::Value::Sequence(results)) = mapping.get_mut(&results_key) {
+        let chain_key = serde_yaml::Value::String("chain".into());
+        for entry in results {
+            if let Some(entry_map) = entry.as_mapping_mut()
+                && let Some(serde_yaml::Value::Sequence(chains)) = entry_map.get_mut(&chain_key)
+            {
+                for chain in chains {
+                    if let Some(old) = chain.as_str()
+                        && let Some(new_id) = corrections.get(old)
+                    {
+                        let old_str = old.to_string();
+                        *chain = serde_yaml::Value::String(new_id.clone());
+                        updated.push((old_str, new_id.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    // Update tables[]
+    let tables_key = serde_yaml::Value::String("tables".into());
+    if let Some(serde_yaml::Value::Sequence(tables)) = mapping.get_mut(&tables_key) {
+        for table_ref in tables {
+            if let Some(old) = table_ref.as_str()
+                && let Some(new_id) = corrections.get(old)
+            {
+                let old_str = old.to_string();
+                *table_ref = serde_yaml::Value::String(new_id.clone());
+                updated.push((old_str, new_id.clone()));
+            }
+        }
+    }
+
+    updated
+}
+
 /// Fix id fields across all table files in a collection.
 ///
 /// For each YAML file:
@@ -61,7 +146,6 @@ pub struct FixResult {
 /// - If it's correct, record as Ok.
 /// - If the file can't be parsed, record the error and continue.
 pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result<FixResult, Error> {
-    let _ = ref_handling;
     let (_manifest, files, discovery_errors) =
         crate::collection::discover_collection_files(manifest_path)?;
 
@@ -127,6 +211,75 @@ pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result
                 path: file.path,
                 id: file.stem,
             });
+        }
+    }
+
+    // Pass 2: Detect stale references if any ids were corrected.
+    let corrections: std::collections::HashMap<String, String> = result
+        .actions
+        .iter()
+        .filter_map(|a| match a {
+            FixAction::Corrected { old_id, id, .. } => Some((old_id.clone(), id.clone())),
+            _ => None,
+        })
+        .collect();
+
+    if !corrections.is_empty() {
+        // Re-read files from disk to pick up pass 1 changes
+        let (_manifest2, files2, discovery_errors2) =
+            crate::collection::discover_collection_files(manifest_path)?;
+        result.errors.extend(discovery_errors2);
+
+        // Collect valid file stems for false-positive guard
+        let valid_stems: std::collections::HashSet<String> =
+            files2.iter().map(|f| f.stem.clone()).collect();
+
+        // Filter corrections to only those with valid target stems
+        let filtered_corrections: std::collections::HashMap<String, String> = corrections
+            .into_iter()
+            .filter(|(_, new_id)| valid_stems.contains(new_id))
+            .collect();
+
+        if ref_handling == RefHandling::Update {
+            // Update mode: fix stale references and report as actions
+            for file in files2 {
+                let mut value: serde_yaml::Value = match serde_yaml::from_str(&file.contents) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let updated = update_references(&mut value, &filtered_corrections);
+                if !updated.is_empty() {
+                    let yaml_out = serde_yaml::to_string(&value)?;
+                    fs::write(&file.path, &yaml_out)?;
+                    for (old_ref, new_ref) in updated {
+                        result.actions.push(FixAction::UpdatedReference {
+                            path: file.path.clone(),
+                            old_ref,
+                            new_ref,
+                        });
+                    }
+                }
+            }
+        } else {
+            // WarnOnly mode: detect stale references and report as warnings
+            for file in &files2 {
+                let value: serde_yaml::Value = match serde_yaml::from_str(&file.contents) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+
+                let refs = extract_references(&value);
+                for ref_str in &refs {
+                    if let Some(new_id) = filtered_corrections.get(ref_str.as_str()) {
+                        result.warnings.push(FixWarning::StaleReference {
+                            path: file.path.clone(),
+                            reference: ref_str.clone(),
+                            suggested: new_id.clone(),
+                        });
+                    }
+                }
+            }
         }
     }
 
@@ -233,6 +386,38 @@ directories:
             }
             other => panic!("Expected LoadError::InvalidFormat, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn fix_warns_about_stale_chain_reference() {
+        let dir = setup_collection(&[
+            (
+                "wolf-count.yaml",
+                "id: wolf-counter\nname: Wolf Count\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Wolves\n",
+            ),
+            (
+                "wilderness.yaml",
+                "id: wilderness\nname: Wilderness\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 2\n    text: Animals\n    chain:\n      - wolf-counter\n  - min: 3\n    max: 4\n    text: Nothing\n",
+            ),
+        ]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
+
+        // wolf-count.yaml should have its id corrected
+        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { old_id, id, .. } if old_id == "wolf-counter" && id == "wolf-count")));
+
+        // Should warn about stale reference in wilderness.yaml
+        assert_eq!(result.warnings.len(), 1);
+        match &result.warnings[0] {
+            FixWarning::StaleReference { reference, suggested, .. } => {
+                assert_eq!(reference, "wolf-counter");
+                assert_eq!(suggested, "wolf-count");
+            }
+        }
+
+        // The stale reference should NOT be updated in the file (warn only)
+        let content = fs::read_to_string(dir.path().join("tables/wilderness.yaml")).unwrap();
+        assert!(content.contains("wolf-counter"));
     }
 
     #[test]
