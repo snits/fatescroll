@@ -40,7 +40,7 @@ pub fn search_by_namespace<'a>(
 }
 
 /// Collect all unique tags across all tables, sorted alphabetically.
-pub fn collect_tags<'a>(registry: &'a Registry) -> BTreeSet<&'a str> {
+pub fn collect_tags(registry: &Registry) -> BTreeSet<&str> {
     registry
         .all_tables()
         .flat_map(|(_, table)| table.tags().iter().map(|t| t.as_str()))

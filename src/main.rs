@@ -155,8 +155,7 @@ fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
         for err in &result.errors {
             eprintln!("  - {err}");
         }
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             format!("{} file(s) could not be processed", result.errors.len()),
         )
         .into());
