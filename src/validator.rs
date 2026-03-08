@@ -78,6 +78,19 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             let dice_min = sim.min as u32;
             let dice_max = sim.max as u32;
 
+            // Pre-check: every entry must fall within dice range
+            for entry in results {
+                if entry.min < dice_min || entry.max > dice_max {
+                    return Err(ValidationError::EntryOutOfRange {
+                        table: name.clone(),
+                        entry_min: entry.min,
+                        entry_max: entry.max,
+                        dice_min,
+                        dice_max,
+                    });
+                }
+            }
+
             // Check range coverage: every value in [dice_min, dice_max]
             // must be covered exactly once
             let mut coverage = vec![0u32; (dice_max - dice_min + 1) as usize];
@@ -323,6 +336,56 @@ mod tests {
             err,
             crate::error::ValidationError::InvalidDiceExpression { .. }
         ));
+    }
+
+    #[test]
+    fn entry_below_dice_min() {
+        let table = Table::Simple {
+            name: "Below".into(),
+            tags: vec![],
+            roll: "1d6".into(), // range 1-6
+            results: vec![
+                ResultEntry {
+                    min: 0, // below dice_min of 1
+                    max: 3,
+                    text: Some("Bad".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 4,
+                    max: 6,
+                    text: Some("OK".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(matches!(err, ValidationError::EntryOutOfRange { .. }));
+    }
+
+    #[test]
+    fn entry_above_dice_max() {
+        let table = Table::Simple {
+            name: "Above".into(),
+            tags: vec![],
+            roll: "1d6".into(), // range 1-6
+            results: vec![
+                ResultEntry {
+                    min: 1,
+                    max: 3,
+                    text: Some("OK".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 4,
+                    max: 8, // above dice_max of 6
+                    text: Some("Bad".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(matches!(err, ValidationError::EntryOutOfRange { .. }));
     }
 
     use crate::registry::Registry;
