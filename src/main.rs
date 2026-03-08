@@ -22,6 +22,9 @@ enum Commands {
     Validate {
         /// Path to collection directory (containing manifest.yaml)
         collection: PathBuf,
+        /// Automatically fix id field issues
+        #[arg(long)]
+        fix: bool,
     },
     /// Roll on a table
     Roll {
@@ -63,7 +66,13 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Validate { collection } => cmd_validate(&collection),
+        Commands::Validate { collection, fix } => {
+            if fix {
+                cmd_fix(&collection)
+            } else {
+                cmd_validate(&collection)
+            }
+        }
         Commands::Roll {
             collection,
             table_id,
@@ -90,6 +99,43 @@ fn main() {
         eprintln!("Error: {e}");
         process::exit(1);
     }
+}
+
+fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
+    let manifest_path = collection.join("manifest.yaml");
+    let result = fatescroll::fixer::fix_collection(&manifest_path)?;
+
+    for action in &result.actions {
+        match action {
+            fatescroll::fixer::FixAction::Added { path, id } => {
+                println!("Added id '{id}' to {}", path.display());
+            }
+            fatescroll::fixer::FixAction::Corrected {
+                path,
+                old_id,
+                id,
+            } => {
+                println!(
+                    "Corrected id '{old_id}' -> '{id}' in {}",
+                    path.display()
+                );
+            }
+            fatescroll::fixer::FixAction::Ok { path } => {
+                println!("OK: {}", path.display());
+            }
+        }
+    }
+
+    if !result.errors.is_empty() {
+        eprintln!("\nErrors encountered:");
+        for err in &result.errors {
+            eprintln!("  - {err}");
+        }
+        process::exit(1);
+    }
+
+    println!("\nFix complete.");
+    Ok(())
 }
 
 fn cmd_validate(collection: &Path) -> Result<(), fatescroll::Error> {
