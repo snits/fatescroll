@@ -26,6 +26,9 @@ enum Commands {
         /// Automatically fix id field issues
         #[arg(long)]
         fix: bool,
+        /// Update stale references after id corrections (requires --fix)
+        #[arg(long, requires = "fix")]
+        update_refs: bool,
     },
     /// Roll on a table
     Roll {
@@ -88,10 +91,10 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Validate { collection, fix } => {
+        Commands::Validate { collection, fix, update_refs } => {
             resolve_collection(collection).and_then(|collection| {
                 if fix {
-                    cmd_fix(&collection, false)
+                    cmd_fix(&collection, update_refs)
                 } else {
                     cmd_validate(&collection)
                 }
