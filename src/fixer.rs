@@ -245,7 +245,10 @@ pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result
             for file in files2 {
                 let mut value: serde_yaml::Value = match serde_yaml::from_str(&file.contents) {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(e) => {
+                        result.errors.push(Error::Yaml(e));
+                        continue;
+                    }
                 };
 
                 let updated = update_references(&mut value, &filtered_corrections);
@@ -266,7 +269,10 @@ pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result
             for file in &files2 {
                 let value: serde_yaml::Value = match serde_yaml::from_str(&file.contents) {
                     Ok(v) => v,
-                    Err(_) => continue,
+                    Err(e) => {
+                        result.errors.push(Error::Yaml(e));
+                        continue;
+                    }
                 };
 
                 let refs = extract_references(&value);
@@ -433,5 +439,110 @@ directories:
         assert!(matches!(&result.actions[0], FixAction::Ok { .. }));
         assert!(result.warnings.is_empty());
         assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn fix_updates_stale_chain_reference_when_forced() {
+        let dir = setup_collection(&[
+            (
+                "wolf-count.yaml",
+                "id: wolf-counter\nname: Wolf Count\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Wolves\n",
+            ),
+            (
+                "wilderness.yaml",
+                "id: wilderness\nname: Wilderness\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 2\n    text: Animals\n    chain:\n      - wolf-counter\n  - min: 3\n    max: 4\n    text: Nothing\n",
+            ),
+        ]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest, RefHandling::Update).unwrap();
+
+        // Should have UpdatedReference action
+        assert!(result.actions.iter().any(|a| matches!(a,
+            FixAction::UpdatedReference { old_ref, new_ref, .. }
+            if old_ref == "wolf-counter" && new_ref == "wolf-count"
+        )));
+
+        // No warnings in Update mode
+        assert!(result.warnings.is_empty());
+
+        // Verify the file was actually updated
+        let content = fs::read_to_string(dir.path().join("tables/wilderness.yaml")).unwrap();
+        assert!(content.contains("wolf-count"));
+        assert!(!content.contains("wolf-counter"));
+    }
+
+    #[test]
+    fn fix_warns_about_stale_compound_reference() {
+        let dir = setup_collection(&[
+            (
+                "npc-occupation.yaml",
+                "id: npc-job\nname: NPC Job\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Smith\n",
+            ),
+            (
+                "quick-npc.yaml",
+                "id: quick-npc\nname: Quick NPC\ntype: compound\ntags: []\ntables:\n  - npc-job\n",
+            ),
+        ]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
+
+        // npc-occupation.yaml should have its id corrected
+        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { old_id, .. } if old_id == "npc-job")));
+
+        // Should warn about stale reference in quick-npc.yaml
+        assert_eq!(result.warnings.len(), 1);
+        match &result.warnings[0] {
+            FixWarning::StaleReference { reference, suggested, .. } => {
+                assert_eq!(reference, "npc-job");
+                assert_eq!(suggested, "npc-occupation");
+            }
+        }
+    }
+
+    #[test]
+    fn fix_handles_file_with_both_id_and_reference_correction() {
+        let dir = setup_collection(&[
+            (
+                "wolf-count.yaml",
+                "id: wolf-counter\nname: Wolf Count\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Wolves\n",
+            ),
+            (
+                "encounter.yaml",
+                "id: encountr\nname: Encounter\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 2\n    text: Wolves\n    chain:\n      - wolf-counter\n  - min: 3\n    max: 4\n    text: Nothing\n",
+            ),
+        ]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest, RefHandling::Update).unwrap();
+
+        // Both ids should be corrected
+        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "wolf-count")));
+        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "encounter")));
+
+        // Reference should be updated
+        assert!(result.actions.iter().any(|a| matches!(a,
+            FixAction::UpdatedReference { old_ref, new_ref, .. }
+            if old_ref == "wolf-counter" && new_ref == "wolf-count"
+        )));
+
+        // Verify encounter.yaml has BOTH corrections: correct id AND updated reference
+        let content = fs::read_to_string(dir.path().join("tables/encounter.yaml")).unwrap();
+        assert!(content.contains("id: encounter"), "id should be corrected");
+        assert!(content.contains("wolf-count"), "reference should be updated to wolf-count");
+        assert!(!content.contains("wolf-counter"), "old reference should be gone");
+        assert!(!content.contains("encountr"), "old id should be gone");
+    }
+
+    #[test]
+    fn fix_no_warnings_when_no_corrections() {
+        let dir = setup_collection(&[
+            (
+                "already-correct.yaml",
+                "id: already-correct\nname: Correct\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n",
+            ),
+        ]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
+
+        assert!(result.warnings.is_empty());
     }
 }
