@@ -4,7 +4,7 @@ This guide covers how to create table collections for fatescroll, an RPG random 
 
 ## Collections
 
-A **collection** is a directory that contains a `manifest.yaml` file and one or more subdirectories of table files. The manifest describes the collection metadata and maps each subdirectory to a namespace.
+A **collection** is a directory that contains a `manifest.yaml` file and references to one or more directories of table files. The manifest describes the collection metadata and maps each directory to a namespace.
 
 ### manifest.yaml Schema
 
@@ -15,13 +15,13 @@ A **collection** is a directory that contains a `manifest.yaml` file and one or 
 | `namespace` | string | yes | Root namespace for the collection. Must follow namespace rules (see below). |
 | `author` | string | no | Author name. Use `~` (YAML null) to omit. |
 | `min_tool_version` | string | no | Minimum fatescroll version required. Use `~` to omit. |
-| `directories` | list | yes | List of directory entries. Each entry maps a subdirectory to a namespace. |
+| `directories` | list | yes | List of directory entries. Each entry maps a directory to a namespace. |
 
 Each entry in `directories` has:
 
 | Field | Type | Description |
 |---|---|---|
-| `path` | string | Relative path from the manifest to the subdirectory containing table YAML files. |
+| `path` | string | Path to the directory containing table YAML files. Can be relative to the manifest location (e.g., `terrain`, `../shared/npc`). |
 | `namespace` | string | Dot-separated namespace assigned to tables in this directory. |
 
 ### Example manifest.yaml
@@ -218,6 +218,60 @@ Chain references and compound table references resolve using a **relative-first*
 2. **FQID lookup**: If no relative match is found, the reference is tried as a fully qualified ID. For example, `other-collection.special-table` would be looked up directly.
 
 This means you can use short names (like `animal-type`) when referencing tables in the same namespace, and full FQIDs when referencing tables in other namespaces.
+
+### Sharing Tables Across Collections
+
+Multiple manifests can reference the same table directories. Directory paths don't need to be subdirectories of the manifest — they can reach outside the manifest's directory tree using relative paths like `../shared/npc`.
+
+For example, suppose you have a shared set of NPC tables and two campaigns that use them:
+
+```
+collections/
+  shared/
+    npc/
+      npc-occupation.yaml
+      npc-disposition.yaml
+      npc-quirk.yaml
+      quick-npc.yaml
+  campaign-dark-forest/
+    manifest.yaml
+    encounters/
+      forest-encounter.yaml
+  campaign-seaside/
+    manifest.yaml
+    harbors/
+      harbor-events.yaml
+```
+
+Both campaign manifests can reference the shared NPC tables:
+
+```yaml
+# campaign-dark-forest/manifest.yaml
+name: Dark Forest Campaign
+version: "1.0"
+namespace: darkforest
+directories:
+  - path: ../shared/npc
+    namespace: darkforest.npc
+  - path: encounters
+    namespace: darkforest.encounters
+```
+
+```yaml
+# campaign-seaside/manifest.yaml
+name: Seaside Campaign
+version: "1.0"
+namespace: seaside
+directories:
+  - path: ../shared/npc
+    namespace: seaside.npc
+  - path: harbors
+    namespace: seaside.harbors
+```
+
+Each manifest assigns its own namespace to the shared directory. The table files are not copied — both manifests read the same files on disk.
+
+**Chain references and shared tables:** Tables that use relative (bare name) chain references — like `quick-npc.yaml` referencing `npc-occupation` — work correctly when shared this way, because relative references resolve within whatever namespace the manifest assigns. However, if a shared table contains a chain reference using a full FQID (e.g., `darkforest.npc.npc-occupation`), that reference would break when loaded under a different namespace. For portable shared tables, prefer relative references for tables within the same directory.
 
 ### Chain Depth Limit
 
