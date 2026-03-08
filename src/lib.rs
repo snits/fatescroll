@@ -2,6 +2,7 @@
 // ABOUTME: Re-exports core types and provides top-level convenience functions.
 
 pub mod error;
+pub mod fixer;
 pub mod loader;
 pub mod models;
 pub mod registry;
