@@ -71,6 +71,7 @@ mod tests {
 
     fn simple_table(name: &str) -> Table {
         Table::Simple {
+            id: name.to_lowercase().replace(' ', "-"),
             name: name.to_string(),
             tags: vec!["test".to_string()],
             roll: "1d6".to_string(),
