@@ -49,6 +49,9 @@ enum Commands {
         /// Search by namespace
         #[arg(long)]
         namespace: Option<String>,
+        /// List all unique tags in the collection
+        #[arg(long, conflicts_with_all = ["name", "tag", "namespace"])]
+        tags: bool,
     },
     /// Import table files into a collection
     Import {
@@ -103,12 +106,14 @@ fn main() {
             name,
             tag,
             namespace,
+            tags,
         } => resolve_collection(collection).and_then(|collection| {
             cmd_search(
                 &collection,
                 name.as_deref(),
                 tag.as_deref(),
                 namespace.as_deref(),
+                tags,
             )
         }),
         Commands::Import {
@@ -204,8 +209,21 @@ fn cmd_search(
     name: Option<&str>,
     tag: Option<&str>,
     namespace: Option<&str>,
+    tags: bool,
 ) -> Result<(), fatescroll::Error> {
     let registry = fatescroll::load_collection(collection)?;
+
+    if tags {
+        let all_tags = fatescroll::search::collect_tags(&registry);
+        if all_tags.is_empty() {
+            println!("No tags found.");
+        } else {
+            for tag in &all_tags {
+                println!("{tag}");
+            }
+        }
+        return Ok(());
+    }
 
     let results: Vec<(&str, &fatescroll::Table)> = if let Some(name) = name {
         fatescroll::search::search_by_name(&registry, name)
@@ -216,7 +234,7 @@ fn cmd_search(
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "specify --name, --tag, or --namespace",
+            "specify --name, --tag, --namespace, or --tags",
         )
         .into());
     };
