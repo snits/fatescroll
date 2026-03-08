@@ -1,145 +1,66 @@
 // ABOUTME: Loads table collections from the filesystem into a registry.
 // ABOUTME: Reads manifests, discovers YAML files, parses, validates, and registers.
 
-use std::fs;
 use std::path::Path;
 
 use crate::error::{Error, LoadError, ValidationError};
-use crate::models::{Manifest, Table};
+use crate::models::Table;
 use crate::registry::Registry;
 use crate::validator::{validate_namespace, validate_table};
 
 /// Load a collection from a manifest file path.
 /// Returns a populated Registry or collected errors.
 pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
-    if !manifest_path.exists() {
-        return Err(LoadError::ManifestNotFound {
-            path: manifest_path.to_path_buf(),
-        }
-        .into());
-    }
-
-    let manifest_contents = fs::read_to_string(manifest_path).map_err(|e| LoadError::FileRead {
-        path: manifest_path.to_path_buf(),
-        reason: e.to_string(),
-    })?;
-
-    let mut manifest: Manifest = serde_yaml::from_str(&manifest_contents)?;
-    manifest.base_path = manifest_path
-        .parent()
-        .unwrap_or(Path::new("."))
-        .to_path_buf();
+    let (manifest, files, mut errors) = crate::collection::discover_collection_files(manifest_path)?;
 
     let mut registry = Registry::new();
-    let mut errors: Vec<Error> = Vec::new();
 
     // Validate manifest namespace
     if let Err(e) = validate_namespace(&manifest.namespace) {
         errors.push(e.into());
     }
 
-    for dir_entry in &manifest.directories {
-        // Validate directory namespace
-        if let Err(e) = validate_namespace(&dir_entry.namespace) {
-            errors.push(e.into());
-            continue;
+    // Track which directory namespaces we've validated
+    let mut validated_namespaces = std::collections::HashSet::new();
+
+    for file in &files {
+        // Validate directory namespace once per unique namespace
+        if validated_namespaces.insert(&file.namespace) {
+            if let Err(e) = validate_namespace(&file.namespace) {
+                errors.push(e.into());
+                continue;
+            }
         }
 
-        let dir_path = manifest.base_path.join(&dir_entry.path);
-        if !dir_path.is_dir() {
-            errors.push(ValidationError::DirectoryNotFound { path: dir_path }.into());
-            continue;
-        }
+        let fqid = format!("{}.{}", file.namespace, file.stem);
 
-        // Discover and load YAML files
-        let entries = match fs::read_dir(&dir_path) {
-            Ok(entries) => entries,
+        let table: Table = match serde_yaml::from_str(&file.contents) {
+            Ok(t) => t,
             Err(e) => {
-                errors.push(
-                    LoadError::FileRead {
-                        path: dir_path,
-                        reason: e.to_string(),
-                    }
-                    .into(),
-                );
+                errors.push(Error::Yaml(e));
                 continue;
             }
         };
 
-        for entry_result in entries {
-            let entry = match entry_result {
-                Ok(e) => e,
-                Err(e) => {
-                    errors.push(
-                        LoadError::FileRead {
-                            path: dir_path.clone(),
-                            reason: e.to_string(),
-                        }
-                        .into(),
-                    );
-                    continue;
+        if table.id() != file.stem {
+            errors.push(
+                ValidationError::IdFilenameMismatch {
+                    id: table.id().to_string(),
+                    filename: file.stem.clone(),
+                    path: file.path.clone(),
                 }
-            };
-            let path = entry.path();
-            let ext = path.extension().and_then(|e| e.to_str());
-            if ext != Some("yaml") && ext != Some("yml") {
-                continue;
-            }
-            if path.file_name().and_then(|n| n.to_str()) == Some("manifest.yaml") {
-                continue;
-            }
+                .into(),
+            );
+            continue;
+        }
 
-            let stem = match path.file_stem().and_then(|s| s.to_str()) {
-                Some(s) => s.to_string(),
-                None => continue,
-            };
+        if let Err(e) = validate_table(&table) {
+            errors.push(e.into());
+            continue;
+        }
 
-            let fqid = format!("{}.{}", dir_entry.namespace, stem);
-
-            let contents = match fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(e) => {
-                    errors.push(
-                        LoadError::FileRead {
-                            path: path.clone(),
-                            reason: e.to_string(),
-                        }
-                        .into(),
-                    );
-                    continue;
-                }
-            };
-
-            let table: Table = match serde_yaml::from_str(&contents) {
-                Ok(t) => t,
-                Err(e) => {
-                    errors.push(Error::Yaml(e));
-                    continue;
-                }
-            };
-
-            // Validate that the table's id matches the filename stem
-            if table.id() != stem {
-                errors.push(
-                    ValidationError::IdFilenameMismatch {
-                        id: table.id().to_string(),
-                        filename: stem.clone(),
-                        path: path.clone(),
-                    }
-                    .into(),
-                );
-                continue;
-            }
-
-            // Per-type validation
-            if let Err(e) = validate_table(&table) {
-                errors.push(e.into());
-                continue;
-            }
-
-            if let Err(e) = registry.register(fqid, table) {
-                errors.push(e.into());
-            }
+        if let Err(e) = registry.register(fqid, table) {
+            errors.push(e.into());
         }
     }
 
