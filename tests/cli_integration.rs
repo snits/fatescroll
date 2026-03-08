@@ -126,6 +126,37 @@ fn validate_fix_adds_missing_ids() {
 }
 
 #[test]
+fn cwd_fallback_succeeds_when_manifest_present() {
+    let collection = fixtures_path("valid-collection");
+    let output = fatescroll_bin()
+        .args(["validate"])
+        .current_dir(&collection)
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn cwd_fallback_fails_without_manifest() {
+    let dir = TempDir::new().unwrap();
+    let output = fatescroll_bin()
+        .args(["validate"])
+        .current_dir(dir.path())
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("No collection found"),
+        "Expected 'No collection found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
 fn roll_nonexistent_table() {
     let output = fatescroll_bin()
         .args([
