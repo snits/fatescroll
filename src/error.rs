@@ -30,6 +30,15 @@ pub enum ValidationError {
     #[error("range reversed: min {min} > max {max} in table '{table}'")]
     RangeReversed { table: String, min: u32, max: u32 },
 
+    #[error("entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'")]
+    EntryOutOfRange {
+        table: String,
+        entry_min: u32,
+        entry_max: u32,
+        dice_min: u32,
+        dice_max: u32,
+    },
+
     #[error("range gap in table '{table}': missing values {missing:?}")]
     RangeGap { table: String, missing: Vec<u32> },
 
