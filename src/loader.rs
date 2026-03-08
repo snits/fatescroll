@@ -118,6 +118,19 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
                 }
             };
 
+            // Validate that the table's id matches the filename stem
+            if table.id() != stem {
+                errors.push(
+                    ValidationError::IdFilenameMismatch {
+                        id: table.id().to_string(),
+                        filename: stem.clone(),
+                        path: path.clone(),
+                    }
+                    .into(),
+                );
+                continue;
+            }
+
             // Per-type validation
             if let Err(e) = validate_table(&table) {
                 errors.push(e.into());
@@ -189,6 +202,17 @@ mod tests {
     fn load_manifest_not_found() {
         let result = load_collection(&PathBuf::from("/nonexistent/manifest.yaml"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_rejects_id_filename_mismatch() {
+        let manifest_path = fixtures_path("id-mismatch-collection/manifest.yaml");
+        let err = load_collection(&manifest_path).unwrap_err();
+        let err_msg = format!("{err}");
+        assert!(
+            err_msg.contains("wrong-id") && err_msg.contains("actual-filename"),
+            "Expected id mismatch error, got: {err_msg}"
+        );
     }
 
     #[test]

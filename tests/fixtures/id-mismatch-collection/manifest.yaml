@@ -1,0 +1,8 @@
+name: ID Mismatch Test
+version: "1.0"
+namespace: test
+author: ~
+min_tool_version: ~
+directories:
+  - path: tables
+    namespace: test.tables
