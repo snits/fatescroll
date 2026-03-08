@@ -88,7 +88,9 @@ pub fn discover_collection_files(
             if ext != Some("yaml") && ext != Some("yml") {
                 continue;
             }
-            if path.file_name().and_then(|n| n.to_str()) == Some("manifest.yaml") {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str())
+                && (name == "manifest.yaml" || name.ends_with(".manifest.yaml"))
+            {
                 continue;
             }
 

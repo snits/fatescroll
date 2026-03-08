@@ -18,10 +18,9 @@ pub use error::Error;
 pub use models::{RollResult, Table};
 pub use registry::Registry;
 
-/// Load and validate a collection from a directory containing manifest.yaml.
-pub fn load_collection(collection_dir: &Path) -> Result<Registry, Error> {
-    let manifest_path = collection_dir.join("manifest.yaml");
-    let registry = loader::load_collection(&manifest_path)?;
+/// Load and validate a collection from a manifest file path.
+pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
+    let registry = loader::load_collection(manifest_path)?;
 
     if let Err(errors) = validator::validate_references(&registry) {
         return Err(error::LoadError::Multiple {
