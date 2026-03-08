@@ -56,6 +56,14 @@ enum Commands {
         #[arg(long, conflicts_with_all = ["name", "tag", "namespace"])]
         tags: bool,
     },
+    /// Display a table's contents
+    Show {
+        /// Path to collection directory
+        #[arg(long)]
+        collection: Option<PathBuf>,
+        /// Fully qualified table ID (e.g., "dmg.treasure.gems")
+        table_id: String,
+    },
     /// Import table files into a collection
     Import {
         /// Path to collection directory
@@ -119,6 +127,11 @@ fn main() {
                 tags,
             )
         }),
+        Commands::Show {
+            collection,
+            table_id,
+        } => resolve_collection(collection)
+            .and_then(|collection| cmd_show(&collection, &table_id)),
         Commands::Import {
             collection,
             target_dir,
@@ -219,6 +232,17 @@ fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> 
     let registry = fatescroll::load_collection(collection)?;
     let result = fatescroll::roller::roll(&registry, table_id)?;
     print_roll_result(&result, 0);
+    Ok(())
+}
+
+fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> {
+    let registry = fatescroll::load_collection(collection)?;
+    let table = registry
+        .get(table_id)
+        .ok_or_else(|| fatescroll::error::RollError::TableNotFound {
+            id: table_id.to_string(),
+        })?;
+    print!("{}", fatescroll::display::format_table(table_id, table));
     Ok(())
 }
 
