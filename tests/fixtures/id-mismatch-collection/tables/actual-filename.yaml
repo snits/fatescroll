@@ -1,0 +1,9 @@
+id: wrong-id
+name: Mismatched Table
+type: simple
+tags: []
+roll: 1d4
+results:
+  - min: 1
+    max: 4
+    text: Something
