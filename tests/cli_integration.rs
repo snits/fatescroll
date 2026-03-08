@@ -157,6 +157,55 @@ fn cwd_fallback_fails_without_manifest() {
 }
 
 #[test]
+fn search_tags_lists_unique_tags() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--tags",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for expected_tag in ["animal", "bandit", "encounter", "generator", "merchant", "npc", "terrain", "wilderness"] {
+        assert!(
+            stdout.contains(expected_tag),
+            "Expected tag '{expected_tag}' in output, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn search_tags_conflicts_with_name() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--tags",
+            "--name",
+            "foo",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        !output.status.success(),
+        "Expected failure when --tags and --name are combined"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--tags") || stderr.contains("cannot be used with"),
+        "Expected conflict error in stderr, got: {stderr}"
+    );
+}
+
+#[test]
 fn roll_nonexistent_table() {
     let output = fatescroll_bin()
         .args([
