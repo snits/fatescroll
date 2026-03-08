@@ -35,9 +35,10 @@ impl Registry {
         self.tables.get(fqid)
     }
 
-    /// Resolve a reference using relative-first resolution:
-    /// 1. Try current_namespace + "." + reference
-    /// 2. Try reference as a fully qualified ID
+    /// Resolve a reference using three-step resolution:
+    /// 1. Try current_namespace + "." + reference (relative)
+    /// 2. Try reference as a fully qualified ID (absolute)
+    /// 3. Search all tables by bare id suffix (global fallback, unambiguous only)
     ///
     /// Returns (fqid, &Table) on success.
     pub fn resolve(&self, reference: &str, current_namespace: &str) -> Option<(&str, &Table)> {
@@ -48,6 +49,17 @@ impl Registry {
 
         if let Some((key, table)) = self.tables.get_key_value(reference) {
             return Some((key, table));
+        }
+
+        // Step 3: Global bare id fallback — search all tables by bare id suffix
+        let suffix = format!(".{reference}");
+        let candidates: Vec<_> = self.tables
+            .iter()
+            .filter(|(fqid, _)| fqid.ends_with(&suffix))
+            .collect();
+        if candidates.len() == 1 {
+            let (fqid, table) = candidates[0];
+            return Some((fqid.as_str(), table));
         }
 
         None
@@ -132,6 +144,83 @@ mod tests {
     fn resolve_not_found() {
         let reg = Registry::new();
         assert!(reg.resolve("nonexistent", "ns").is_none());
+    }
+
+    #[test]
+    fn resolve_cross_namespace_by_bare_id() {
+        let mut reg = Registry::new();
+        let encounter_table = Table::Simple {
+            id: "wolf-count".into(),
+            name: "Wolf Count".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![],
+        };
+        reg.register("test.encounters.wolf-count".into(), encounter_table)
+            .unwrap();
+
+        // Resolve from a different namespace using bare id
+        let result = reg.resolve("wolf-count", "test.npc");
+        assert!(result.is_some(), "bare id should resolve across namespaces");
+        let (fqid, _) = result.unwrap();
+        assert_eq!(fqid, "test.encounters.wolf-count");
+    }
+
+    #[test]
+    fn resolve_ambiguous_bare_id_returns_none() {
+        let mut reg = Registry::new();
+        let table1 = Table::Simple {
+            id: "wolf-count".into(),
+            name: "Wolf Count 1".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![],
+        };
+        let table2 = Table::Simple {
+            id: "wolf-count".into(),
+            name: "Wolf Count 2".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![],
+        };
+        reg.register("test.encounters.wolf-count".into(), table1)
+            .unwrap();
+        reg.register("test.npc.wolf-count".into(), table2)
+            .unwrap();
+
+        // Resolve from a third namespace — ambiguous, should return None
+        let result = reg.resolve("wolf-count", "test.terrain");
+        assert!(result.is_none(), "ambiguous bare id should return None");
+    }
+
+    #[test]
+    fn resolve_relative_takes_priority_over_global() {
+        let mut reg = Registry::new();
+        let local = Table::Simple {
+            id: "wolf-count".into(),
+            name: "Local Wolf Count".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![],
+        };
+        let remote = Table::Simple {
+            id: "wolf-count".into(),
+            name: "Remote Wolf Count".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![],
+        };
+        reg.register("test.encounters.wolf-count".into(), local)
+            .unwrap();
+        reg.register("test.npc.wolf-count".into(), remote)
+            .unwrap();
+
+        // Resolve from test.encounters — should get the local one (relative match)
+        let result = reg.resolve("wolf-count", "test.encounters");
+        assert!(result.is_some());
+        let (fqid, table) = result.unwrap();
+        assert_eq!(fqid, "test.encounters.wolf-count");
+        assert_eq!(table.name(), "Local Wolf Count");
     }
 
     #[test]
