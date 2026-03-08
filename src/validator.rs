@@ -75,6 +75,16 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                     reason: e.to_string(),
                 }
             })?;
+            if sim.min < 0 || sim.max < 0 {
+                return Err(ValidationError::InvalidDiceExpression {
+                    table: name.clone(),
+                    expr: roll.clone(),
+                    reason: format!(
+                        "dice range [{}, {}] includes negative values",
+                        sim.min, sim.max
+                    ),
+                });
+            }
             let dice_min = sim.min as u32;
             let dice_max = sim.max as u32;
 
@@ -459,6 +469,27 @@ mod tests {
 
         let errors = validate_references(&registry).unwrap_err();
         assert_eq!(errors.len(), 2);
+    }
+
+    #[test]
+    fn negative_dice_range_returns_error() {
+        let table = Table::Simple {
+            id: "negative".into(),
+            name: "Negative".into(),
+            tags: vec![],
+            roll: "1d4-3".into(), // range -2 to 1
+            results: vec![ResultEntry {
+                min: 1,
+                max: 4,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(matches!(
+            err,
+            ValidationError::InvalidDiceExpression { .. }
+        ));
     }
 
     #[test]
