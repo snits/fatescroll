@@ -131,10 +131,13 @@ pub fn fix_collection(manifest_path: &Path) -> Result<FixResult, Error> {
             let mapping = match value.as_mapping_mut() {
                 Some(m) => m,
                 None => {
-                    result.errors.push(Error::Yaml(
-                        serde_yaml::from_str::<serde_yaml::Value>("{{invalid")
-                            .unwrap_err(),
-                    ));
+                    result.errors.push(
+                        LoadError::FileRead {
+                            path: path.clone(),
+                            reason: "YAML root is not a mapping".into(),
+                        }
+                        .into(),
+                    );
                     continue;
                 }
             };
