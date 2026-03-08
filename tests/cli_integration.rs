@@ -317,3 +317,61 @@ fn roll_nonexistent_table() {
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
 }
+
+#[test]
+fn show_displays_simple_table() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Wilderness Encounter"));
+    assert!(stdout.contains("Roll: 1d8"));
+    assert!(stdout.contains("→ animal-type"));
+}
+
+#[test]
+fn show_displays_compound_table() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.npc.quick-npc",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Quick NPC Generator"));
+    assert!(stdout.contains("Tables:"));
+    assert!(stdout.contains("npc-occupation"));
+}
+
+#[test]
+fn show_nonexistent_table_fails() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "nonexistent.table",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+}
