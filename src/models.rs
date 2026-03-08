@@ -17,6 +17,7 @@ pub struct ResultEntry {
 pub enum Table {
     #[serde(rename = "simple")]
     Simple {
+        id: String,
         name: String,
         #[serde(default)]
         tags: Vec<String>,
@@ -25,6 +26,7 @@ pub enum Table {
     },
     #[serde(rename = "compound")]
     Compound {
+        id: String,
         name: String,
         #[serde(default)]
         tags: Vec<String>,
@@ -33,6 +35,12 @@ pub enum Table {
 }
 
 impl Table {
+    pub fn id(&self) -> &str {
+        match self {
+            Table::Simple { id, .. } | Table::Compound { id, .. } => id,
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Table::Simple { name, .. } | Table::Compound { name, .. } => name,
