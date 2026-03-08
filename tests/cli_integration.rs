@@ -20,6 +20,7 @@ fn validate_valid_collection() {
     let output = fatescroll_bin()
         .args([
             "validate",
+            "--collection",
             &fixtures_path("valid-collection").to_string_lossy(),
         ])
         .output()
@@ -36,6 +37,7 @@ fn validate_invalid_collection_fails() {
     let output = fatescroll_bin()
         .args([
             "validate",
+            "--collection",
             &fixtures_path("invalid-collection").to_string_lossy(),
         ])
         .output()
@@ -100,6 +102,7 @@ fn validate_fix_adds_missing_ids() {
         .args([
             "validate",
             "--fix",
+            "--collection",
             &dir.path().to_string_lossy(),
         ])
         .output()
