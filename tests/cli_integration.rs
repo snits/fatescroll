@@ -375,3 +375,98 @@ fn show_nonexistent_table_fails() {
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
 }
+
+#[test]
+fn validate_named_manifest_in_directory() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(
+        dir.path().join("campaign.manifest.yaml"),
+        "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("my-table.yaml"),
+        "id: my-table\nname: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn validate_multiple_manifests_error() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    let manifest_content = "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n";
+
+    std::fs::write(dir.path().join("manifest.yaml"), manifest_content).unwrap();
+    std::fs::write(dir.path().join("other.manifest.yaml"), manifest_content).unwrap();
+
+    std::fs::write(
+        tables_dir.join("my-table.yaml"),
+        "id: my-table\nname: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Multiple manifests found"),
+        "Expected 'Multiple manifests found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn validate_named_manifest_direct_file_path() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(
+        dir.path().join("campaign.manifest.yaml"),
+        "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("my-table.yaml"),
+        "id: my-table\nname: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let manifest_path = dir.path().join("campaign.manifest.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
