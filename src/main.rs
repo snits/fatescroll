@@ -21,7 +21,8 @@ enum Commands {
     /// Validate a table collection
     Validate {
         /// Path to collection directory (containing manifest.yaml)
-        collection: PathBuf,
+        #[arg(long)]
+        collection: Option<PathBuf>,
         /// Automatically fix id field issues
         #[arg(long)]
         fix: bool,
@@ -30,7 +31,7 @@ enum Commands {
     Roll {
         /// Path to collection directory
         #[arg(long)]
-        collection: PathBuf,
+        collection: Option<PathBuf>,
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
         table_id: String,
     },
@@ -38,7 +39,7 @@ enum Commands {
     Search {
         /// Path to collection directory
         #[arg(long)]
-        collection: PathBuf,
+        collection: Option<PathBuf>,
         /// Search by table name
         #[arg(long)]
         name: Option<String>,
@@ -48,12 +49,15 @@ enum Commands {
         /// Search by namespace
         #[arg(long)]
         namespace: Option<String>,
+        /// List all unique tags in the collection
+        #[arg(long, conflicts_with_all = ["name", "tag", "namespace"])]
+        tags: bool,
     },
     /// Import table files into a collection
     Import {
         /// Path to collection directory
         #[arg(long)]
-        collection: PathBuf,
+        collection: Option<PathBuf>,
         /// Directory within the collection to import into
         #[arg(long)]
         target_dir: String,
@@ -62,37 +66,62 @@ enum Commands {
     },
 }
 
+/// Resolve the collection path from explicit flag or CWD detection.
+fn resolve_collection(explicit: Option<PathBuf>) -> Result<PathBuf, fatescroll::Error> {
+    if let Some(path) = explicit {
+        return Ok(path);
+    }
+
+    let cwd = std::env::current_dir()?;
+    if cwd.join("manifest.yaml").exists() {
+        return Ok(cwd);
+    }
+
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "No collection found. Provide --collection or run from a collection directory.",
+    )
+    .into())
+}
+
 fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
         Commands::Validate { collection, fix } => {
-            if fix {
-                cmd_fix(&collection)
-            } else {
-                cmd_validate(&collection)
-            }
+            resolve_collection(collection).and_then(|collection| {
+                if fix {
+                    cmd_fix(&collection)
+                } else {
+                    cmd_validate(&collection)
+                }
+            })
         }
         Commands::Roll {
             collection,
             table_id,
-        } => cmd_roll(&collection, &table_id),
+        } => resolve_collection(collection).and_then(|collection| cmd_roll(&collection, &table_id)),
         Commands::Search {
             collection,
             name,
             tag,
             namespace,
-        } => cmd_search(
-            &collection,
-            name.as_deref(),
-            tag.as_deref(),
-            namespace.as_deref(),
-        ),
+            tags,
+        } => resolve_collection(collection).and_then(|collection| {
+            cmd_search(
+                &collection,
+                name.as_deref(),
+                tag.as_deref(),
+                namespace.as_deref(),
+                tags,
+            )
+        }),
         Commands::Import {
             collection,
             target_dir,
             files,
-        } => cmd_import(&collection, &target_dir, &files),
+        } => resolve_collection(collection)
+            .and_then(|collection| cmd_import(&collection, &target_dir, &files)),
     };
 
     if let Err(e) = result {
@@ -131,8 +160,7 @@ fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
         for err in &result.errors {
             eprintln!("  - {err}");
         }
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        return Err(std::io::Error::other(
             format!("{} file(s) could not be processed", result.errors.len()),
         )
         .into());
@@ -181,8 +209,21 @@ fn cmd_search(
     name: Option<&str>,
     tag: Option<&str>,
     namespace: Option<&str>,
+    tags: bool,
 ) -> Result<(), fatescroll::Error> {
     let registry = fatescroll::load_collection(collection)?;
+
+    if tags {
+        let all_tags = fatescroll::search::collect_tags(&registry);
+        if all_tags.is_empty() {
+            println!("No tags found.");
+        } else {
+            for tag in &all_tags {
+                println!("{tag}");
+            }
+        }
+        return Ok(());
+    }
 
     let results: Vec<(&str, &fatescroll::Table)> = if let Some(name) = name {
         fatescroll::search::search_by_name(&registry, name)
@@ -193,7 +234,7 @@ fn cmd_search(
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "specify --name, --tag, or --namespace",
+            "specify --name, --tag, --namespace, or --tags",
         )
         .into());
     };
