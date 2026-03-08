@@ -206,6 +206,105 @@ fn search_tags_conflicts_with_name() {
 }
 
 #[test]
+fn validate_fix_warns_about_stale_references() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(
+        dir.path().join("manifest.yaml"),
+        "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("wolf-count.yaml"),
+        "id: wolf-counter\nname: Wolf Count\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Wolves\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("wilderness.yaml"),
+        "id: wilderness\nname: Wilderness\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 2\n    text: Animals\n    chain:\n      - wolf-counter\n  - min: 3\n    max: 4\n    text: Nothing\n",
+    ).unwrap();
+
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--fix",
+            "--collection",
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("stale reference"),
+        "Expected 'stale reference' in stderr, got: {stderr}"
+    );
+    assert!(
+        stderr.contains("--update-refs"),
+        "Expected '--update-refs' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn validate_fix_update_refs_fixes_stale_references() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(
+        dir.path().join("manifest.yaml"),
+        "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("wolf-count.yaml"),
+        "id: wolf-counter\nname: Wolf Count\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Wolves\n",
+    ).unwrap();
+
+    std::fs::write(
+        tables_dir.join("wilderness.yaml"),
+        "id: wilderness\nname: Wilderness\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 2\n    text: Animals\n    chain:\n      - wolf-counter\n  - min: 3\n    max: 4\n    text: Nothing\n",
+    ).unwrap();
+
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--fix",
+            "--update-refs",
+            "--collection",
+            &dir.path().to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Updated reference"),
+        "Expected 'Updated reference' in stdout, got: {stdout}"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("stale reference"),
+        "Expected no 'stale reference' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
 fn roll_nonexistent_table() {
     let output = fatescroll_bin()
         .args([

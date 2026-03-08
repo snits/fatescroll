@@ -1,5 +1,5 @@
-// ABOUTME: Fixes table collection YAML files by adding or correcting `id` fields.
-// ABOUTME: Walks manifest directories, parses YAML as generic values, and patches ids to match filenames.
+// ABOUTME: Fixes table collection YAML files by correcting `id` fields and detecting stale references.
+// ABOUTME: Two-pass: fixes ids to match filenames, then scans for chain/compound references needing update.
 
 use std::fs;
 use std::path::Path;
