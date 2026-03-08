@@ -17,6 +17,7 @@ pub struct ResultEntry {
 pub enum Table {
     #[serde(rename = "simple")]
     Simple {
+        id: String,
         name: String,
         #[serde(default)]
         tags: Vec<String>,
@@ -25,6 +26,7 @@ pub enum Table {
     },
     #[serde(rename = "compound")]
     Compound {
+        id: String,
         name: String,
         #[serde(default)]
         tags: Vec<String>,
@@ -33,6 +35,12 @@ pub enum Table {
 }
 
 impl Table {
+    pub fn id(&self) -> &str {
+        match self {
+            Table::Simple { id, .. } | Table::Compound { id, .. } => id,
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Table::Simple { name, .. } | Table::Compound { name, .. } => name,
@@ -79,6 +87,7 @@ mod tests {
     #[test]
     fn deserialize_simple_table() {
         let yaml = r#"
+id: test-table
 name: Test Table
 type: simple
 tags:
@@ -95,11 +104,13 @@ results:
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
             Table::Simple {
+                id,
                 name,
                 tags,
                 roll,
                 results,
             } => {
+                assert_eq!(id, "test-table");
                 assert_eq!(name, "Test Table");
                 assert_eq!(tags, vec!["test"]);
                 assert_eq!(roll, "1d6");
@@ -116,6 +127,7 @@ results:
     #[test]
     fn deserialize_simple_table_with_chains() {
         let yaml = r#"
+id: encounter
 name: Encounter
 type: simple
 tags: []
@@ -149,6 +161,7 @@ results:
     #[test]
     fn deserialize_compound_table() {
         let yaml = r#"
+id: quick-npc
 name: Quick NPC
 type: compound
 tags:
@@ -161,7 +174,8 @@ tables:
 "#;
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
-            Table::Compound { name, tags, tables } => {
+            Table::Compound { id, name, tags, tables } => {
+                assert_eq!(id, "quick-npc");
                 assert_eq!(name, "Quick NPC");
                 assert_eq!(tags, vec!["npc", "generator"]);
                 assert_eq!(
@@ -199,6 +213,7 @@ directories:
     #[test]
     fn deserialize_simple_table_default_tags() {
         let yaml = r#"
+id: minimal
 name: Minimal
 type: simple
 roll: 1d4

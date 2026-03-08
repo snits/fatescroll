@@ -149,6 +149,7 @@ mod tests {
         reg.register(
             "test.simple".into(),
             Table::Simple {
+                id: "simple".into(),
                 name: "Simple Test".into(),
                 tags: vec![],
                 roll: "1d6".into(),
@@ -173,6 +174,7 @@ mod tests {
         reg.register(
             "test.chained".into(),
             Table::Simple {
+                id: "chained".into(),
                 name: "Chained".into(),
                 tags: vec![],
                 roll: "1d4".into(),
@@ -197,6 +199,7 @@ mod tests {
         reg.register(
             "test.compound".into(),
             Table::Compound {
+                id: "compound".into(),
                 name: "Compound Test".into(),
                 tags: vec![],
                 tables: vec!["simple".into()],
@@ -207,6 +210,7 @@ mod tests {
         reg.register(
             "test.interpolated".into(),
             Table::Simple {
+                id: "interpolated".into(),
                 name: "Interpolated".into(),
                 tags: vec![],
                 roll: "1d4".into(),
@@ -260,6 +264,7 @@ mod tests {
         reg.register(
             "ns.parent".into(),
             Table::Simple {
+                id: "parent".into(),
                 name: "Parent".into(),
                 tags: vec![],
                 roll: "1d4".into(),
@@ -275,6 +280,7 @@ mod tests {
         reg.register(
             "ns.child".into(),
             Table::Simple {
+                id: "child".into(),
                 name: "Child".into(),
                 tags: vec![],
                 roll: "1d6".into(),
@@ -312,6 +318,7 @@ mod tests {
         reg.register(
             "loop.a".into(),
             Table::Simple {
+                id: "a".into(),
                 name: "A".into(),
                 tags: vec![],
                 roll: "1d4".into(),
@@ -327,6 +334,7 @@ mod tests {
         reg.register(
             "loop.b".into(),
             Table::Simple {
+                id: "b".into(),
                 name: "B".into(),
                 tags: vec![],
                 roll: "1d4".into(),
