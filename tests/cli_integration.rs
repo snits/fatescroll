@@ -20,6 +20,7 @@ fn validate_valid_collection() {
     let output = fatescroll_bin()
         .args([
             "validate",
+            "--collection",
             &fixtures_path("valid-collection").to_string_lossy(),
         ])
         .output()
@@ -36,6 +37,7 @@ fn validate_invalid_collection_fails() {
     let output = fatescroll_bin()
         .args([
             "validate",
+            "--collection",
             &fixtures_path("invalid-collection").to_string_lossy(),
         ])
         .output()
@@ -100,6 +102,7 @@ fn validate_fix_adds_missing_ids() {
         .args([
             "validate",
             "--fix",
+            "--collection",
             &dir.path().to_string_lossy(),
         ])
         .output()
@@ -120,6 +123,86 @@ fn validate_fix_adds_missing_ids() {
     // Verify the file was actually fixed
     let content = std::fs::read_to_string(tables_dir.join("my-table.yaml")).unwrap();
     assert!(content.contains("id: my-table"), "File should contain id: my-table, got: {content}");
+}
+
+#[test]
+fn cwd_fallback_succeeds_when_manifest_present() {
+    let collection = fixtures_path("valid-collection");
+    let output = fatescroll_bin()
+        .args(["validate"])
+        .current_dir(&collection)
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn cwd_fallback_fails_without_manifest() {
+    let dir = TempDir::new().unwrap();
+    let output = fatescroll_bin()
+        .args(["validate"])
+        .current_dir(dir.path())
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("No collection found"),
+        "Expected 'No collection found' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn search_tags_lists_unique_tags() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--tags",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for expected_tag in ["animal", "bandit", "encounter", "generator", "merchant", "npc", "terrain", "wilderness"] {
+        assert!(
+            stdout.contains(expected_tag),
+            "Expected tag '{expected_tag}' in output, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn search_tags_conflicts_with_name() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--tags",
+            "--name",
+            "foo",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        !output.status.success(),
+        "Expected failure when --tags and --name are combined"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--tags") || stderr.contains("cannot be used with"),
+        "Expected conflict error in stderr, got: {stderr}"
+    );
 }
 
 #[test]

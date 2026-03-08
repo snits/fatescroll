@@ -1,6 +1,8 @@
 // ABOUTME: Search functions for finding tables by name, tag, or namespace.
 // ABOUTME: All searches are case-insensitive for names, exact-match for tags.
 
+use std::collections::BTreeSet;
+
 use crate::models::Table;
 use crate::registry::Registry;
 
@@ -34,6 +36,14 @@ pub fn search_by_namespace<'a>(
     registry
         .all_tables()
         .filter(|(fqid, _)| fqid.starts_with(&prefix))
+        .collect()
+}
+
+/// Collect all unique tags across all tables, sorted alphabetically.
+pub fn collect_tags(registry: &Registry) -> BTreeSet<&str> {
+    registry
+        .all_tables()
+        .flat_map(|(_, table)| table.tags().iter().map(|t| t.as_str()))
         .collect()
 }
 
@@ -145,5 +155,22 @@ mod tests {
         assert!(search_by_name(&reg, "nonexistent").is_empty());
         assert!(search_by_tag(&reg, "nonexistent").is_empty());
         assert!(search_by_namespace(&reg, "nonexistent").is_empty());
+    }
+
+    #[test]
+    fn collect_tags_empty_registry() {
+        let reg = Registry::new();
+        let tags = collect_tags(&reg);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn collect_tags_returns_sorted_unique_tags() {
+        let reg = build_search_registry();
+        let tags = collect_tags(&reg);
+        assert_eq!(
+            tags.iter().copied().collect::<Vec<_>>(),
+            vec!["encounter", "gems", "npc", "treasure", "wilderness"]
+        );
     }
 }
