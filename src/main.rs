@@ -131,7 +131,11 @@ fn cmd_fix(collection: &Path) -> Result<(), fatescroll::Error> {
         for err in &result.errors {
             eprintln!("  - {err}");
         }
-        process::exit(1);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("{} file(s) could not be processed", result.errors.len()),
+        )
+        .into());
     }
 
     println!("\nFix complete.");
