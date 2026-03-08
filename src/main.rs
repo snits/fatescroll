@@ -20,7 +20,7 @@ struct Cli {
 enum Commands {
     /// Validate a table collection
     Validate {
-        /// Path to collection directory (containing manifest.yaml)
+        /// Path to collection directory or manifest file or manifest file
         #[arg(long)]
         collection: Option<PathBuf>,
         /// Automatically fix id field issues
@@ -32,7 +32,7 @@ enum Commands {
     },
     /// Roll on a table
     Roll {
-        /// Path to collection directory
+        /// Path to collection directory or manifest file
         #[arg(long)]
         collection: Option<PathBuf>,
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
@@ -40,7 +40,7 @@ enum Commands {
     },
     /// Search for tables
     Search {
-        /// Path to collection directory
+        /// Path to collection directory or manifest file
         #[arg(long)]
         collection: Option<PathBuf>,
         /// Search by table name
@@ -58,7 +58,7 @@ enum Commands {
     },
     /// Display a table's contents
     Show {
-        /// Path to collection directory
+        /// Path to collection directory or manifest file
         #[arg(long)]
         collection: Option<PathBuf>,
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
@@ -66,7 +66,7 @@ enum Commands {
     },
     /// Import table files into a collection
     Import {
-        /// Path to collection directory
+        /// Path to collection directory or manifest file
         #[arg(long)]
         collection: Option<PathBuf>,
         /// Directory within the collection to import into
@@ -77,22 +77,76 @@ enum Commands {
     },
 }
 
-/// Resolve the collection path from explicit flag or CWD detection.
+/// Find all manifest files in a directory.
+fn find_manifests(dir: &Path) -> Vec<PathBuf> {
+    let mut manifests = Vec::new();
+    let default = dir.join("manifest.yaml");
+    if default.is_file() {
+        manifests.push(default);
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if !entry.path().is_file() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.ends_with(".manifest.yaml") {
+                manifests.push(entry.path());
+            }
+        }
+    }
+    manifests.sort();
+    manifests
+}
+
+fn resolve_manifest_in_dir(dir: &Path) -> Result<PathBuf, fatescroll::Error> {
+    let manifests = find_manifests(dir);
+    match manifests.len() {
+        0 => Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No collection found. Provide --collection or run from a collection directory.",
+        )
+        .into()),
+        1 => Ok(manifests.into_iter().next().unwrap()),
+        _ => {
+            let names: Vec<String> = manifests
+                .iter()
+                .filter_map(|p| p.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .collect();
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "Multiple manifests found: {}. Specify one with --collection <path>.",
+                    names.join(", ")
+                ),
+            )
+            .into())
+        }
+    }
+}
+
+/// Resolve the manifest path from explicit flag or CWD detection.
+///
+/// Accepts either a manifest file path or a directory containing manifests.
 fn resolve_collection(explicit: Option<PathBuf>) -> Result<PathBuf, fatescroll::Error> {
     if let Some(path) = explicit {
-        return Ok(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+        if path.is_dir() {
+            return resolve_manifest_in_dir(&path);
+        }
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Path not found: {}", path.display()),
+        )
+        .into());
     }
 
     let cwd = std::env::current_dir()?;
-    if cwd.join("manifest.yaml").exists() {
-        return Ok(cwd);
-    }
-
-    Err(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "No collection found. Provide --collection or run from a collection directory.",
-    )
-    .into())
+    resolve_manifest_in_dir(&cwd)
 }
 
 fn main() {
@@ -146,14 +200,13 @@ fn main() {
     }
 }
 
-fn cmd_fix(collection: &Path, update_refs: bool) -> Result<(), fatescroll::Error> {
-    let manifest_path = collection.join("manifest.yaml");
+fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Error> {
     let ref_handling = if update_refs {
         fatescroll::fixer::RefHandling::Update
     } else {
         fatescroll::fixer::RefHandling::WarnOnly
     };
-    let result = fatescroll::fixer::fix_collection(&manifest_path, ref_handling)?;
+    let result = fatescroll::fixer::fix_collection(manifest_path, ref_handling)?;
 
     for action in &result.actions {
         match action {
@@ -318,11 +371,12 @@ fn cmd_search(
 }
 
 fn cmd_import(
-    collection: &Path,
+    manifest_path: &Path,
     target_dir: &str,
     files: &[PathBuf],
 ) -> Result<(), fatescroll::Error> {
-    let dest = collection.join(target_dir);
+    let collection_dir = manifest_path.parent().unwrap_or(Path::new("."));
+    let dest = collection_dir.join(target_dir);
     if !dest.is_dir() {
         std::fs::create_dir_all(&dest)?;
     }
@@ -339,7 +393,7 @@ fn cmd_import(
     }
 
     println!("Validating collection...");
-    let _registry = fatescroll::load_collection(collection)?;
+    let _registry = fatescroll::load_collection(manifest_path)?;
     println!("Collection is valid after import.");
     Ok(())
 }
