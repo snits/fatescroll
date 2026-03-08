@@ -352,4 +352,194 @@ mod tests {
         let err = roll_with_rng(&reg, "loop.a", &mut rng).unwrap_err();
         assert!(matches!(err, RollError::ChainDepthExceeded { .. }));
     }
+
+    #[test]
+    fn roll_negative_result_errors() {
+        let mut reg = Registry::new();
+        reg.register(
+            "test.negative".into(),
+            Table::Simple {
+                id: "negative".into(),
+                name: "Negative".into(),
+                tags: vec![],
+                roll: "1d4-10".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Unreachable".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "test.negative", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::NegativeRoll { value } if value < 0));
+    }
+
+    #[test]
+    fn roll_out_of_range_errors() {
+        let mut reg = Registry::new();
+        reg.register(
+            "test.gap".into(),
+            Table::Simple {
+                id: "gap".into(),
+                name: "Gap".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 100,
+                    max: 100,
+                    text: Some("Unreachable".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "test.gap", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::RollOutOfRange { .. }));
+    }
+
+    #[test]
+    fn roll_invalid_dice_expression_errors() {
+        let mut reg = Registry::new();
+        reg.register(
+            "test.baddice".into(),
+            Table::Simple {
+                id: "baddice".into(),
+                name: "BadDice".into(),
+                tags: vec![],
+                roll: "not_a_dice_expr".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Unreachable".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "test.baddice", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::DiceEvaluation { .. }));
+    }
+
+    #[test]
+    fn interpolate_dice_preserves_non_dice_braces() {
+        let mut reg = Registry::new();
+        reg.register(
+            "test.fallback".into(),
+            Table::Simple {
+                id: "fallback".into(),
+                name: "Fallback".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Hello {world} and {2d6} gold".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "test.fallback", &mut rng).unwrap();
+        let text = result.text.unwrap();
+        // Non-dice expression preserved as-is
+        assert!(text.contains("{world}"));
+        // Dice expression replaced with a number
+        assert!(!text.contains("{2d6}"));
+        assert!(text.starts_with("Hello {world} and "));
+        assert!(text.ends_with(" gold"));
+    }
+
+    #[test]
+    fn roll_entry_with_no_text() {
+        let mut reg = Registry::new();
+        reg.register(
+            "test.notext".into(),
+            Table::Simple {
+                id: "notext".into(),
+                name: "NoText".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: None,
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "test.notext", &mut rng).unwrap();
+        assert!(result.text.is_none());
+    }
+
+    #[test]
+    fn roll_entry_with_multiple_chains() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.multi".into(),
+            Table::Simple {
+                id: "multi".into(),
+                name: "MultiChain".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Branches".into()),
+                    chain: Some(vec!["child_a".into(), "child_b".into()]),
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.child_a".into(),
+            Table::Simple {
+                id: "child_a".into(),
+                name: "Child A".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Result A".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.child_b".into(),
+            Table::Simple {
+                id: "child_b".into(),
+                name: "Child B".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Result B".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "ns.multi", &mut rng).unwrap();
+        assert_eq!(result.children.len(), 2);
+        assert_eq!(result.children[0].table_name, "Child A");
+        assert_eq!(result.children[1].table_name, "Child B");
+    }
 }
