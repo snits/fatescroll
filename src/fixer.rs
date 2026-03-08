@@ -6,6 +6,13 @@ use std::path::Path;
 
 use crate::error::{Error, LoadError};
 
+/// How to handle stale references found during fix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefHandling {
+    WarnOnly,
+    Update,
+}
+
 /// Describes the action taken on a single table file.
 #[derive(Debug)]
 pub enum FixAction {
@@ -19,12 +26,30 @@ pub enum FixAction {
     },
     /// The `id` field was already correct.
     Ok { path: std::path::PathBuf },
+    /// A reference was updated from old to new value.
+    UpdatedReference {
+        path: std::path::PathBuf,
+        old_ref: String,
+        new_ref: String,
+    },
+}
+
+/// A warning about a potential issue that was not auto-fixed.
+#[derive(Debug)]
+pub enum FixWarning {
+    /// A reference matches a corrected old_id and may be stale.
+    StaleReference {
+        path: std::path::PathBuf,
+        reference: String,
+        suggested: String,
+    },
 }
 
 /// Accumulated results from fixing a collection.
 #[derive(Debug)]
 pub struct FixResult {
     pub actions: Vec<FixAction>,
+    pub warnings: Vec<FixWarning>,
     pub errors: Vec<Error>,
 }
 
@@ -35,12 +60,14 @@ pub struct FixResult {
 /// - If the `id` field is wrong, replace it with the filename stem.
 /// - If it's correct, record as Ok.
 /// - If the file can't be parsed, record the error and continue.
-pub fn fix_collection(manifest_path: &Path) -> Result<FixResult, Error> {
+pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result<FixResult, Error> {
+    let _ = ref_handling;
     let (_manifest, files, discovery_errors) =
         crate::collection::discover_collection_files(manifest_path)?;
 
     let mut result = FixResult {
         actions: Vec::new(),
+        warnings: Vec::new(),
         errors: discovery_errors,
     };
 
@@ -142,10 +169,11 @@ directories:
             "name: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
         )]);
         let manifest = dir.path().join("manifest.yaml");
-        let result = fix_collection(&manifest).unwrap();
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(&result.actions[0], FixAction::Added { id, .. } if id == "my-table"));
+        assert!(result.warnings.is_empty());
         assert!(result.errors.is_empty());
 
         // Verify the file was actually updated
@@ -160,9 +188,10 @@ directories:
             "id: wrong-name\nname: Some Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
         )]);
         let manifest = dir.path().join("manifest.yaml");
-        let result = fix_collection(&manifest).unwrap();
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         assert_eq!(result.actions.len(), 1);
+        assert!(result.warnings.is_empty());
         assert!(
             matches!(&result.actions[0], FixAction::Corrected { old_id, id, .. } if old_id == "wrong-name" && id == "correct-name")
         );
@@ -179,10 +208,11 @@ directories:
             ("bad.yaml", "{{{{not valid yaml at all"),
         ]);
         let manifest = dir.path().join("manifest.yaml");
-        let result = fix_collection(&manifest).unwrap();
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         // One good file processed, one error collected
         assert_eq!(result.actions.len(), 1);
+        assert!(result.warnings.is_empty());
         assert_eq!(result.errors.len(), 1);
     }
 
@@ -190,9 +220,10 @@ directories:
     fn fix_reports_non_mapping_yaml_as_format_error() {
         let dir = setup_collection(&[("scalar.yaml", "just a string, not a mapping")]);
         let manifest = dir.path().join("manifest.yaml");
-        let result = fix_collection(&manifest).unwrap();
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         assert!(result.actions.is_empty());
+        assert!(result.warnings.is_empty());
         assert_eq!(result.errors.len(), 1);
 
         // Verify the error is a LoadError::InvalidFormat, not FileRead
@@ -211,10 +242,11 @@ directories:
             "id: already-correct\nname: Correct\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n",
         )]);
         let manifest = dir.path().join("manifest.yaml");
-        let result = fix_collection(&manifest).unwrap();
+        let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(&result.actions[0], FixAction::Ok { .. }));
+        assert!(result.warnings.is_empty());
         assert!(result.errors.is_empty());
     }
 }
