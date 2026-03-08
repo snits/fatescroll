@@ -57,7 +57,7 @@ pub fn fix_collection(manifest_path: &Path) -> Result<FixResult, Error> {
             Some(m) => m,
             None => {
                 result.errors.push(
-                    LoadError::FileRead {
+                    LoadError::InvalidFormat {
                         path: file.path.clone(),
                         reason: "YAML root is not a mapping".into(),
                     }
@@ -184,6 +184,24 @@ directories:
         // One good file processed, one error collected
         assert_eq!(result.actions.len(), 1);
         assert_eq!(result.errors.len(), 1);
+    }
+
+    #[test]
+    fn fix_reports_non_mapping_yaml_as_format_error() {
+        let dir = setup_collection(&[("scalar.yaml", "just a string, not a mapping")]);
+        let manifest = dir.path().join("manifest.yaml");
+        let result = fix_collection(&manifest).unwrap();
+
+        assert!(result.actions.is_empty());
+        assert_eq!(result.errors.len(), 1);
+
+        // Verify the error is a LoadError::InvalidFormat, not FileRead
+        match &result.errors[0] {
+            Error::Load(LoadError::InvalidFormat { path, .. }) => {
+                assert!(path.to_string_lossy().contains("scalar.yaml"));
+            }
+            other => panic!("Expected LoadError::InvalidFormat, got: {other:?}"),
+        }
     }
 
     #[test]

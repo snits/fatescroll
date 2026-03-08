@@ -86,6 +86,9 @@ pub enum LoadError {
     #[error("failed to read file {path}: {reason}")]
     FileRead { path: PathBuf, reason: String },
 
+    #[error("invalid format in {path}: {reason}")]
+    InvalidFormat { path: PathBuf, reason: String },
+
     #[error("multiple errors during load:\n{}", .errors.iter().map(|e| format!("  - {e}")).collect::<Vec<_>>().join("\n"))]
     Multiple { errors: Vec<Error> },
 }
