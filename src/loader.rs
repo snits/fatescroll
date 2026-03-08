@@ -25,11 +25,11 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
 
     for file in &files {
         // Validate directory namespace once per unique namespace
-        if validated_namespaces.insert(&file.namespace) {
-            if let Err(e) = validate_namespace(&file.namespace) {
-                errors.push(e.into());
-                continue;
-            }
+        if validated_namespaces.insert(&file.namespace)
+            && let Err(e) = validate_namespace(&file.namespace)
+        {
+            errors.push(e.into());
+            continue;
         }
 
         let fqid = format!("{}.{}", file.namespace, file.stem);
