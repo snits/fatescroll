@@ -113,4 +113,11 @@ pub enum RollError {
         expr: String,
         reason: String,
     },
+
+    #[error("reroll attempts exhausted ({attempts}) for table '{table}' with reroll values {reroll_values:?}")]
+    RerollExhausted {
+        table: String,
+        attempts: usize,
+        reroll_values: Vec<u32>,
+    },
 }
