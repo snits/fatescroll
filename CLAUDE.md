@@ -15,7 +15,11 @@ cargo test --lib               # Unit tests only
 cargo test --test cli_integration  # Integration tests only
 cargo test <test_name>         # Run a single test by name
 cargo clippy -- -D warnings    # Lint (must pass clean)
+cargo fmt                      # Auto-format code
+cargo fmt --check              # Check formatting without modifying
 ```
+
+A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `.cargo-husky/hooks/pre-commit`. Never bypass hooks.
 
 ## Architecture
 
