@@ -70,6 +70,11 @@ fn extract_references(value: &serde_yaml::Value) -> Vec<String> {
                 for chain in chains {
                     if let Some(s) = chain.as_str() {
                         refs.push(s.to_string());
+                    } else if let Some(mapping) = chain.as_mapping() {
+                        let table_key = serde_yaml::Value::String("table".into());
+                        if let Some(serde_yaml::Value::String(s)) = mapping.get(&table_key) {
+                            refs.push(s.clone());
+                        }
                     }
                 }
             }
@@ -115,6 +120,15 @@ fn update_references(
                         let old_str = old.to_string();
                         *chain = serde_yaml::Value::String(new_id.clone());
                         updated.push((old_str, new_id.clone()));
+                    } else if let Some(mapping) = chain.as_mapping_mut() {
+                        let table_key = serde_yaml::Value::String("table".into());
+                        if let Some(serde_yaml::Value::String(old)) = mapping.get(&table_key)
+                            && let Some(new_id) = corrections.get(old.as_str()).cloned()
+                        {
+                            let old_str = old.clone();
+                            mapping.insert(table_key, serde_yaml::Value::String(new_id.clone()));
+                            updated.push((old_str, new_id));
+                        }
                     }
                 }
             }
@@ -530,6 +544,68 @@ directories:
         assert!(content.contains("wolf-count"), "reference should be updated to wolf-count");
         assert!(!content.contains("wolf-counter"), "old reference should be gone");
         assert!(!content.contains("encountr"), "old id should be gone");
+    }
+
+    #[test]
+    fn extract_references_from_structured_chain() {
+        let yaml = r#"
+id: mishap
+name: Wizard Mishap
+type: simple
+tags: []
+roll: 1d4
+results:
+  - min: 1
+    max: 1
+    text: Roll twice
+    chain:
+      - table: mishap
+        reroll: [1]
+      - plain-ref
+  - min: 2
+    max: 4
+    text: Normal
+"#;
+        let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let refs = extract_references(&value);
+        assert_eq!(refs.len(), 2);
+        assert!(refs.contains(&"mishap".to_string()));
+        assert!(refs.contains(&"plain-ref".to_string()));
+    }
+
+    #[test]
+    fn update_references_in_structured_chain() {
+        let yaml = r#"
+id: mishap
+name: Wizard Mishap
+type: simple
+tags: []
+roll: 1d4
+results:
+  - min: 1
+    max: 1
+    text: Roll twice
+    chain:
+      - table: old-name
+        reroll: [1]
+      - plain-old-ref
+  - min: 2
+    max: 4
+    text: Normal
+"#;
+        let mut value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+        let mut corrections = std::collections::HashMap::new();
+        corrections.insert("old-name".to_string(), "new-name".to_string());
+        corrections.insert("plain-old-ref".to_string(), "plain-new-ref".to_string());
+
+        let updated = update_references(&mut value, &corrections);
+        assert_eq!(updated.len(), 2);
+        assert!(updated.contains(&("old-name".to_string(), "new-name".to_string())));
+        assert!(updated.contains(&("plain-old-ref".to_string(), "plain-new-ref".to_string())));
+
+        let refs = extract_references(&value);
+        assert!(refs.contains(&"new-name".to_string()));
+        assert!(refs.contains(&"plain-new-ref".to_string()));
     }
 
     #[test]
