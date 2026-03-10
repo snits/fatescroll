@@ -639,4 +639,113 @@ mod tests {
         assert_eq!(result.children[0].table_name, "Child A");
         assert_eq!(result.children[1].table_name, "Child B");
     }
+
+    #[test]
+    fn reroll_exhaustion_returns_error() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.exhaust-parent".into(),
+            Table::Simple {
+                id: "exhaust-parent".into(),
+                name: "Exhaust Parent".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Always chains".into()),
+                    chain: Some(vec![ChainRef::Modified {
+                        table: "exhaust-target".into(),
+                        reroll: vec![1, 2, 3, 4],
+                    }]),
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.exhaust-target".into(),
+            Table::Simple {
+                id: "exhaust-target".into(),
+                name: "Exhaust Target".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Unreachable".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "ns.exhaust-parent", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::RerollExhausted { .. }));
+    }
+
+    #[test]
+    fn self_referential_chain_with_reroll() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.mishap".into(),
+            Table::Simple {
+                id: "mishap".into(),
+                name: "Wizard Mishap".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        text: Some("Roll twice and combine".into()),
+                        chain: Some(vec![
+                            ChainRef::Modified {
+                                table: "mishap".into(),
+                                reroll: vec![1],
+                            },
+                            ChainRef::Modified {
+                                table: "mishap".into(),
+                                reroll: vec![1],
+                            },
+                        ]),
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 2,
+                        text: Some("Hands glow blue".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 3,
+                        max: 3,
+                        text: Some("Lose sense of smell".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 4,
+                        max: 4,
+                        text: Some("Hair turns white".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+        for seed in 0..200 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let result = roll_with_rng(&reg, "ns.mishap", &mut rng).unwrap();
+            if result.roll == Some(1) {
+                assert_eq!(result.children.len(), 2);
+                for child in &result.children {
+                    assert_ne!(
+                        child.roll.unwrap(),
+                        1,
+                        "seed {seed}: self-referential reroll should prevent value 1"
+                    );
+                }
+            }
+        }
+    }
 }
