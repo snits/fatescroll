@@ -15,6 +15,20 @@ pub enum ChainRef {
     },
 }
 
+impl std::fmt::Display for ChainRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainRef::Simple(id) => write!(f, "{id}"),
+            ChainRef::Modified { table, reroll } if reroll.is_empty() => {
+                write!(f, "{table}")
+            }
+            ChainRef::Modified { table, reroll } => {
+                write!(f, "{table} (reroll {:?})", reroll)
+            }
+        }
+    }
+}
+
 impl ChainRef {
     pub fn table_id(&self) -> &str {
         match self {

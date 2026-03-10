@@ -47,7 +47,7 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 let text = entry.text.as_deref().unwrap_or("");
                 let chain_str = match &entry.chain {
                     Some(chains) if !chains.is_empty() => {
-                        let refs: Vec<&str> = chains.iter().map(|c| c.table_id()).collect();
+                        let refs: Vec<String> = chains.iter().map(|c| c.to_string()).collect();
                         format!(" → {}", refs.join(", "))
                     }
                     _ => String::new(),
@@ -170,6 +170,42 @@ mod tests {
         assert!(output.contains("  - npc-occupation"));
         assert!(output.contains("  - npc-disposition"));
         assert!(output.contains("  - npc-quirk"));
+    }
+
+    #[test]
+    fn format_table_with_reroll_chain() {
+        let table = Table::Simple {
+            id: "mishap".into(),
+            name: "Wizard Mishap".into(),
+            tags: vec![],
+            roll: "1d4".into(),
+            results: vec![
+                ResultEntry {
+                    min: 1,
+                    max: 1,
+                    text: Some("Roll twice and combine".into()),
+                    chain: Some(vec![
+                        ChainRef::Modified {
+                            table: "mishap".into(),
+                            reroll: vec![1],
+                        },
+                        ChainRef::Modified {
+                            table: "mishap".into(),
+                            reroll: vec![1],
+                        },
+                    ]),
+                },
+                ResultEntry {
+                    min: 2,
+                    max: 4,
+                    text: Some("Normal".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let output = format_table("ns.mishap", &table);
+        assert!(output.contains("mishap"));
+        assert!(output.contains("reroll"));
     }
 
     #[test]
