@@ -2,21 +2,59 @@
 // ABOUTME: Supports explicit, flat, and bell curve distribution modes.
 
 use crate::error::Error;
+use diceman::{Expr, Op};
 
-/// Determine the min and max values of a dice expression via simulation.
-/// Uses diceman::simulate_seeded which returns SimResult with min and max fields.
-/// Same approach used by the validator (validator.rs:71).
+/// Compute the min and max values of a simple dice expression analytically.
+/// Supports XdY and XdY±Z forms only. Rejects expressions with modifiers
+/// (keep/drop, exploding, reroll) or complex arithmetic (dice+dice, mul/div).
 pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
-    diceman::parse(expr)?;
-    let sim = diceman::simulate_seeded(expr, 100_000, 42)?;
-    if sim.min < 0 || sim.max < 0 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            format!("dice expression '{expr}' produces negative values"),
-        )
-        .into());
+    let parsed = diceman::parse(expr)?;
+    match parsed {
+        Expr::Roll(roll) => {
+            if !roll.modifiers.is_empty() {
+                return Err(unsupported(expr, "dice modifiers"));
+            }
+            let sides = roll.sides.count();
+            Ok((roll.count, roll.count * sides))
+        }
+        Expr::BinOp { op, left, right } => {
+            let roll = match *left {
+                Expr::Roll(r) => r,
+                _ => return Err(unsupported(expr, "complex left-hand expression")),
+            };
+            if !roll.modifiers.is_empty() {
+                return Err(unsupported(expr, "dice modifiers"));
+            }
+            let z = match *right {
+                Expr::Number(n) => n,
+                _ => return Err(unsupported(expr, "non-literal right-hand expression")),
+            };
+            let sides = roll.sides.count() as i64;
+            let count = roll.count as i64;
+            let (min, max) = match op {
+                Op::Add => (count + z, count * sides + z),
+                Op::Sub => (count - z, count * sides - z),
+                _ => return Err(unsupported(expr, "operator (only +/- supported)")),
+            };
+            if min < 0 || max < 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("dice expression '{expr}' produces negative values"),
+                )
+                .into());
+            }
+            Ok((min as u32, max as u32))
+        }
+        _ => Err(unsupported(expr, "expression type")),
     }
-    Ok((sim.min as u32, sim.max as u32))
+}
+
+fn unsupported(expr: &str, what: &str) -> Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!("Unsupported dice expression '{expr}': {what}"),
+    )
+    .into()
 }
 
 /// Generate a table YAML skeleton from a dice expression.
@@ -135,6 +173,56 @@ mod tests {
     #[test]
     fn dice_range_invalid_expression() {
         assert!(dice_range("1z6").is_err());
+    }
+
+    #[test]
+    fn dice_range_rejects_keep_modifier() {
+        let err = dice_range("4d6kh3").unwrap_err();
+        assert!(
+            err.to_string().contains("Unsupported"),
+            "Expected unsupported error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_rejects_exploding() {
+        let err = dice_range("1d6!").unwrap_err();
+        assert!(
+            err.to_string().contains("Unsupported"),
+            "Expected unsupported error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_rejects_dice_plus_dice() {
+        let err = dice_range("1d6+1d4").unwrap_err();
+        assert!(
+            err.to_string().contains("Unsupported"),
+            "Expected unsupported error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_rejects_multiplication() {
+        let err = dice_range("1d6*2").unwrap_err();
+        assert!(
+            err.to_string().contains("Unsupported"),
+            "Expected unsupported error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_1d8_plus_6() {
+        let (min, max) = dice_range("1d8+6").unwrap();
+        assert_eq!(min, 7);
+        assert_eq!(max, 14);
+    }
+
+    #[test]
+    fn dice_range_1d6_minus_1() {
+        let (min, max) = dice_range("1d6-1").unwrap();
+        assert_eq!(min, 0);
+        assert_eq!(max, 5);
     }
 
     #[test]
