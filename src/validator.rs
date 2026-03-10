@@ -162,10 +162,10 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
                 for entry in results {
                     if let Some(chains) = &entry.chain {
                         for chain_ref in chains {
-                            if registry.resolve(chain_ref, current_namespace).is_none() {
+                            if registry.resolve(chain_ref.table_id(), current_namespace).is_none() {
                                 errors.push(ValidationError::UnresolvedChain {
                                     table: name.clone(),
-                                    reference: chain_ref.clone(),
+                                    reference: chain_ref.table_id().to_string(),
                                 });
                             }
                         }
@@ -195,7 +195,7 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ResultEntry, Table};
+    use crate::models::{ChainRef, ResultEntry, Table};
 
     #[test]
     fn valid_namespace_single_segment() {
@@ -431,7 +431,7 @@ mod tests {
                             min: 1,
                             max: 2,
                             text: Some("X".into()),
-                            chain: Some(vec!["nonexistent".into()]),
+                            chain: Some(vec![ChainRef::Simple("nonexistent".into())]),
                         },
                         ResultEntry {
                             min: 3,

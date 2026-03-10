@@ -47,7 +47,8 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 let text = entry.text.as_deref().unwrap_or("");
                 let chain_str = match &entry.chain {
                     Some(chains) if !chains.is_empty() => {
-                        format!(" → {}", chains.join(", "))
+                        let refs: Vec<&str> = chains.iter().map(|c| c.table_id()).collect();
+                        format!(" → {}", refs.join(", "))
                     }
                     _ => String::new(),
                 };
@@ -88,7 +89,7 @@ fn digit_count(n: u32) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::ResultEntry;
+    use crate::models::{ChainRef, ResultEntry};
 
     fn simple_table() -> Table {
         Table::Simple {
@@ -101,15 +102,15 @@ mod tests {
                     min: 1,
                     max: 3,
                     text: Some("Animal encounter".into()),
-                    chain: Some(vec!["animal-type".into()]),
+                    chain: Some(vec![ChainRef::Simple("animal-type".into())]),
                 },
                 ResultEntry {
                     min: 4,
                     max: 5,
                     text: Some("Bandit camp".into()),
                     chain: Some(vec![
-                        "bandit-strength".into(),
-                        "bandit-motivation".into(),
+                        ChainRef::Simple("bandit-strength".into()),
+                        ChainRef::Simple("bandit-motivation".into()),
                     ]),
                 },
                 ResultEntry {
@@ -122,7 +123,7 @@ mod tests {
                     min: 8,
                     max: 8,
                     text: Some("Merchant".into()),
-                    chain: Some(vec!["merchant-goods".into()]),
+                    chain: Some(vec![ChainRef::Simple("merchant-goods".into())]),
                 },
             ],
         }
