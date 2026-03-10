@@ -4,12 +4,53 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ChainRef {
+    Simple(String),
+    Modified {
+        table: String,
+        #[serde(default)]
+        reroll: Vec<u32>,
+    },
+}
+
+impl std::fmt::Display for ChainRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainRef::Simple(id) => write!(f, "{id}"),
+            ChainRef::Modified { table, reroll } if reroll.is_empty() => {
+                write!(f, "{table}")
+            }
+            ChainRef::Modified { table, reroll } => {
+                write!(f, "{table} (reroll {:?})", reroll)
+            }
+        }
+    }
+}
+
+impl ChainRef {
+    pub fn table_id(&self) -> &str {
+        match self {
+            ChainRef::Simple(id) => id,
+            ChainRef::Modified { table, .. } => table,
+        }
+    }
+
+    pub fn reroll_values(&self) -> &[u32] {
+        match self {
+            ChainRef::Simple(_) => &[],
+            ChainRef::Modified { reroll, .. } => reroll,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct ResultEntry {
     pub min: u32,
     pub max: u32,
     pub text: Option<String>,
-    pub chain: Option<Vec<String>>,
+    pub chain: Option<Vec<ChainRef>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -148,11 +189,13 @@ results:
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
             Table::Simple { results, .. } => {
-                assert_eq!(results[0].chain.as_ref().unwrap(), &["wolf-count"]);
-                assert_eq!(
-                    results[1].chain.as_ref().unwrap(),
-                    &["bandit-strength", "bandit-motivation"]
-                );
+                let chains0 = results[0].chain.as_ref().unwrap();
+                assert_eq!(chains0.len(), 1);
+                assert_eq!(chains0[0].table_id(), "wolf-count");
+                let chains1 = results[1].chain.as_ref().unwrap();
+                assert_eq!(chains1.len(), 2);
+                assert_eq!(chains1[0].table_id(), "bandit-strength");
+                assert_eq!(chains1[1].table_id(), "bandit-motivation");
             }
             _ => panic!("Expected Simple table"),
         }
@@ -208,6 +251,83 @@ directories:
         assert!(manifest.author.is_none());
         assert_eq!(manifest.directories.len(), 2);
         assert_eq!(manifest.directories[0].namespace, "test.terrain");
+    }
+
+    #[test]
+    fn deserialize_chain_ref_simple_string() {
+        let yaml = r#""animal-type""#;
+        let chain_ref: ChainRef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(chain_ref.table_id(), "animal-type");
+        assert!(chain_ref.reroll_values().is_empty());
+    }
+
+    #[test]
+    fn deserialize_chain_ref_with_reroll() {
+        let yaml = r#"
+table: wizard-mishap
+reroll: [1]
+"#;
+        let chain_ref: ChainRef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(chain_ref.table_id(), "wizard-mishap");
+        assert_eq!(chain_ref.reroll_values(), &[1]);
+    }
+
+    #[test]
+    fn deserialize_chain_ref_modified_no_reroll() {
+        let yaml = r#"
+table: some-table
+"#;
+        let chain_ref: ChainRef = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(chain_ref.table_id(), "some-table");
+        assert!(chain_ref.reroll_values().is_empty());
+    }
+
+    #[test]
+    fn deserialize_mixed_chain_list() {
+        let yaml = r#"
+- animal-type
+- table: wizard-mishap
+  reroll: [1]
+"#;
+        let chains: Vec<ChainRef> = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(chains.len(), 2);
+        assert_eq!(chains[0].table_id(), "animal-type");
+        assert!(chains[0].reroll_values().is_empty());
+        assert_eq!(chains[1].table_id(), "wizard-mishap");
+        assert_eq!(chains[1].reroll_values(), &[1]);
+    }
+
+    #[test]
+    fn deserialize_simple_table_with_reroll_chain() {
+        let yaml = r#"
+id: mishap
+name: Wizard Mishap
+type: simple
+tags: []
+roll: 1d12
+results:
+  - min: 1
+    max: 1
+    text: "Roll twice and combine"
+    chain:
+      - table: mishap
+        reroll: [1]
+      - table: mishap
+        reroll: [1]
+  - min: 2
+    max: 12
+    text: Other effect
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match table {
+            Table::Simple { results, .. } => {
+                let chains = results[0].chain.as_ref().unwrap();
+                assert_eq!(chains.len(), 2);
+                assert_eq!(chains[0].table_id(), "mishap");
+                assert_eq!(chains[0].reroll_values(), &[1]);
+            }
+            _ => panic!("Expected Simple table"),
+        }
     }
 
     #[test]

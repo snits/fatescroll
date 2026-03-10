@@ -9,6 +9,7 @@ use crate::models::{RollResult, Table};
 use crate::registry::Registry;
 
 const MAX_CHAIN_DEPTH: usize = 10;
+const MAX_REROLL_ATTEMPTS: usize = 100;
 
 static DICE_INTERPOLATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
@@ -21,7 +22,7 @@ pub fn roll_with_rng(
     table_id: &str,
     rng: &mut impl diceman::Rng,
 ) -> Result<RollResult, RollError> {
-    roll_recursive(registry, table_id, "", rng, 0)
+    roll_recursive(registry, table_id, "", rng, 0, &[])
 }
 
 fn roll_recursive(
@@ -30,6 +31,7 @@ fn roll_recursive(
     current_namespace: &str,
     rng: &mut impl diceman::Rng,
     depth: usize,
+    reroll_values: &[u32],
 ) -> Result<RollResult, RollError> {
     if depth > MAX_CHAIN_DEPTH {
         return Err(RollError::ChainDepthExceeded {
@@ -66,33 +68,60 @@ fn roll_recursive(
             results,
             ..
         } => {
-            let dice_result =
-                diceman::roll_with_rng(&roll_expr, rng).map_err(|e| RollError::DiceEvaluation {
-                    table: name.clone(),
-                    expr: roll_expr.clone(),
-                    reason: e.to_string(),
-                })?;
+            let (roll_u32, entry) = {
+                let mut attempts = 0;
+                loop {
+                    let dice_result = diceman::roll_with_rng(&roll_expr, rng).map_err(|e| {
+                        RollError::DiceEvaluation {
+                            table: name.clone(),
+                            expr: roll_expr.clone(),
+                            reason: e.to_string(),
+                        }
+                    })?;
 
-            let roll_value = dice_result.total;
-            if roll_value < 0 {
-                return Err(RollError::NegativeRoll { value: roll_value });
-            }
-            let roll_u32 = roll_value as u32;
+                    let roll_value = dice_result.total;
+                    if roll_value < 0 {
+                        return Err(RollError::NegativeRoll { value: roll_value });
+                    }
+                    let roll_u32 = roll_value as u32;
 
-            let entry = results
-                .iter()
-                .find(|e| roll_u32 >= e.min && roll_u32 <= e.max)
-                .ok_or_else(|| RollError::RollOutOfRange {
-                    table: name.clone(),
-                    value: roll_value,
-                })?;
+                    let entry = results
+                        .iter()
+                        .find(|e| roll_u32 >= e.min && roll_u32 <= e.max)
+                        .ok_or_else(|| RollError::RollOutOfRange {
+                            table: name.clone(),
+                            value: roll_value,
+                        })?;
+
+                    if reroll_values.contains(&roll_u32) {
+                        attempts += 1;
+                        if attempts >= MAX_REROLL_ATTEMPTS {
+                            return Err(RollError::RerollExhausted {
+                                table: name.clone(),
+                                attempts,
+                                reroll_values: reroll_values.to_vec(),
+                            });
+                        }
+                        continue;
+                    }
+
+                    break (roll_u32, entry.clone());
+                }
+            };
 
             let text = entry.text.as_ref().map(|t| interpolate_dice(t, rng));
 
             let mut children = Vec::new();
             if let Some(chains) = &entry.chain {
                 for chain_ref in chains {
-                    let child = roll_recursive(registry, chain_ref, namespace, rng, depth + 1)?;
+                    let child = roll_recursive(
+                        registry,
+                        chain_ref.table_id(),
+                        namespace,
+                        rng,
+                        depth + 1,
+                        chain_ref.reroll_values(),
+                    )?;
                     children.push(child);
                 }
             }
@@ -111,7 +140,7 @@ fn roll_recursive(
         } => {
             let mut children = Vec::new();
             for table_ref in &sub_tables {
-                let child = roll_recursive(registry, table_ref, namespace, rng, depth + 1)?;
+                let child = roll_recursive(registry, table_ref, namespace, rng, depth + 1, &[])?;
                 children.push(child);
             }
 
@@ -140,7 +169,7 @@ fn interpolate_dice(text: &str, rng: &mut impl diceman::Rng) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ResultEntry, Table};
+    use crate::models::{ChainRef, ResultEntry, Table};
     use crate::registry::Registry;
 
     fn build_test_registry() -> Registry {
@@ -183,7 +212,7 @@ mod tests {
                         min: 1,
                         max: 2,
                         text: Some("Follow up".into()),
-                        chain: Some(vec!["simple".into()]),
+                        chain: Some(vec![ChainRef::Simple("simple".into())]),
                     },
                     ResultEntry {
                         min: 3,
@@ -272,7 +301,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Always chains".into()),
-                    chain: Some(vec!["child".into()]),
+                    chain: Some(vec![ChainRef::Simple("child".into())]),
                 }],
             },
         )
@@ -326,7 +355,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Loop".into()),
-                    chain: Some(vec!["b".into()]),
+                    chain: Some(vec![ChainRef::Simple("b".into())]),
                 }],
             },
         )
@@ -342,7 +371,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Loop".into()),
-                    chain: Some(vec!["a".into()]),
+                    chain: Some(vec![ChainRef::Simple("a".into())]),
                 }],
             },
         )
@@ -485,6 +514,74 @@ mod tests {
     }
 
     #[test]
+    fn roll_with_reroll_avoids_excluded_values() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.reroll-parent".into(),
+            Table::Simple {
+                id: "reroll-parent".into(),
+                name: "Reroll Parent".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        text: Some("Chains with reroll".into()),
+                        chain: Some(vec![ChainRef::Modified {
+                            table: "reroll-target".into(),
+                            reroll: vec![1],
+                        }]),
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 4,
+                        text: Some("Normal".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.reroll-target".into(),
+            Table::Simple {
+                id: "reroll-target".into(),
+                name: "Reroll Target".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        text: Some("Should be skipped".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 4,
+                        text: Some("Valid result".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+        for seed in 0..100 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let result = roll_with_rng(&reg, "ns.reroll-parent", &mut rng).unwrap();
+            if !result.children.is_empty() {
+                assert_ne!(
+                    result.children[0].roll.unwrap(),
+                    1,
+                    "seed {seed}: reroll should have prevented value 1"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn roll_entry_with_multiple_chains() {
         let mut reg = Registry::new();
         reg.register(
@@ -498,7 +595,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Branches".into()),
-                    chain: Some(vec!["child_a".into(), "child_b".into()]),
+                    chain: Some(vec![ChainRef::Simple("child_a".into()), ChainRef::Simple("child_b".into())]),
                 }],
             },
         )
@@ -541,5 +638,114 @@ mod tests {
         assert_eq!(result.children.len(), 2);
         assert_eq!(result.children[0].table_name, "Child A");
         assert_eq!(result.children[1].table_name, "Child B");
+    }
+
+    #[test]
+    fn reroll_exhaustion_returns_error() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.exhaust-parent".into(),
+            Table::Simple {
+                id: "exhaust-parent".into(),
+                name: "Exhaust Parent".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Always chains".into()),
+                    chain: Some(vec![ChainRef::Modified {
+                        table: "exhaust-target".into(),
+                        reroll: vec![1, 2, 3, 4],
+                    }]),
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.exhaust-target".into(),
+            Table::Simple {
+                id: "exhaust-target".into(),
+                name: "Exhaust Target".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Unreachable".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "ns.exhaust-parent", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::RerollExhausted { .. }));
+    }
+
+    #[test]
+    fn self_referential_chain_with_reroll() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.mishap".into(),
+            Table::Simple {
+                id: "mishap".into(),
+                name: "Wizard Mishap".into(),
+                tags: vec![],
+                roll: "1d4".into(),
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        text: Some("Roll twice and combine".into()),
+                        chain: Some(vec![
+                            ChainRef::Modified {
+                                table: "mishap".into(),
+                                reroll: vec![1],
+                            },
+                            ChainRef::Modified {
+                                table: "mishap".into(),
+                                reroll: vec![1],
+                            },
+                        ]),
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 2,
+                        text: Some("Hands glow blue".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 3,
+                        max: 3,
+                        text: Some("Lose sense of smell".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 4,
+                        max: 4,
+                        text: Some("Hair turns white".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+
+        for seed in 0..200 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let result = roll_with_rng(&reg, "ns.mishap", &mut rng).unwrap();
+            if result.roll == Some(1) {
+                assert_eq!(result.children.len(), 2);
+                for child in &result.children {
+                    assert_ne!(
+                        child.roll.unwrap(),
+                        1,
+                        "seed {seed}: self-referential reroll should prevent value 1"
+                    );
+                }
+            }
+        }
     }
 }
