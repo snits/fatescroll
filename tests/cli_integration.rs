@@ -377,6 +377,43 @@ fn show_nonexistent_table_fails() {
 }
 
 #[test]
+fn roll_mishap_table_with_reroll_chain() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.mishap",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "roll failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Wizard Mishap"));
+}
+
+#[test]
+fn show_mishap_table_displays_reroll() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.mishap",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Wizard Mishap"));
+    assert!(stdout.contains("reroll"));
+}
+
+#[test]
 fn validate_named_manifest_in_directory() {
     let dir = TempDir::new().unwrap();
     let tables_dir = dir.path().join("tables");
