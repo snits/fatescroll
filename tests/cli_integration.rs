@@ -507,3 +507,59 @@ fn validate_named_manifest_direct_file_path() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn validate_collection_with_file_entries() {
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &fixtures_path("file-entries-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Collection is valid."));
+}
+
+#[test]
+fn roll_on_file_entry_table() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("file-entries-collection").to_string_lossy(),
+            "filetest.terrain.wilderness",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Wilderness Terrain"));
+}
+
+#[test]
+fn validate_files_only_manifest() {
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &fixtures_path("files-only-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

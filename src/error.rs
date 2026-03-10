@@ -70,6 +70,15 @@ pub enum ValidationError {
     #[error("duplicate table ID '{id}'")]
     DuplicateId { id: String },
 
+    #[error("file entry not found: {path}")]
+    FileEntryNotFound { path: PathBuf },
+
+    #[error("file entry is not a file: {path}")]
+    FileEntryNotAFile { path: PathBuf },
+
+    #[error("file entry has invalid extension (expected .yaml or .yml): {path}")]
+    FileEntryInvalidExtension { path: PathBuf },
+
     #[error("table id '{id}' does not match filename '{filename}' in {path}")]
     IdFilenameMismatch {
         id: String,

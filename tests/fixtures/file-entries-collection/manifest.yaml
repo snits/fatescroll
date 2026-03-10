@@ -1,0 +1,11 @@
+name: File Entries Test
+version: "1.0"
+namespace: filetest
+author: ~
+min_tool_version: ~
+directories:
+  - path: encounters
+    namespace: filetest.encounters
+files:
+  - path: shared/wilderness.yaml
+    namespace: filetest.terrain
