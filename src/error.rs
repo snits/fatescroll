@@ -30,7 +30,9 @@ pub enum ValidationError {
     #[error("range reversed: min {min} > max {max} in table '{table}'")]
     RangeReversed { table: String, min: u32, max: u32 },
 
-    #[error("entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'")]
+    #[error(
+        "entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'"
+    )]
     EntryOutOfRange {
         table: String,
         entry_min: u32,
@@ -123,7 +125,9 @@ pub enum RollError {
         reason: String,
     },
 
-    #[error("reroll attempts exhausted ({attempts}) for table '{table}' with reroll values {reroll_values:?}")]
+    #[error(
+        "reroll attempts exhausted ({attempts}) for table '{table}' with reroll values {reroll_values:?}"
+    )]
     RerollExhausted {
         table: String,
         attempts: usize,

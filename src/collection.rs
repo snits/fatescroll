@@ -32,11 +32,10 @@ pub fn discover_collection_files(
         .into());
     }
 
-    let manifest_contents =
-        fs::read_to_string(manifest_path).map_err(|e| LoadError::FileRead {
-            path: manifest_path.to_path_buf(),
-            reason: e.to_string(),
-        })?;
+    let manifest_contents = fs::read_to_string(manifest_path).map_err(|e| LoadError::FileRead {
+        path: manifest_path.to_path_buf(),
+        reason: e.to_string(),
+    })?;
 
     let mut manifest: Manifest = serde_yaml::from_str(&manifest_contents)?;
     manifest.base_path = manifest_path
@@ -125,31 +124,16 @@ pub fn discover_collection_files(
     for file_entry in &manifest.files {
         let file_path = manifest.base_path.join(&file_entry.path);
         if !file_path.exists() {
-            errors.push(
-                ValidationError::FileEntryNotFound {
-                    path: file_path,
-                }
-                .into(),
-            );
+            errors.push(ValidationError::FileEntryNotFound { path: file_path }.into());
             continue;
         }
         if !file_path.is_file() {
-            errors.push(
-                ValidationError::FileEntryNotAFile {
-                    path: file_path,
-                }
-                .into(),
-            );
+            errors.push(ValidationError::FileEntryNotAFile { path: file_path }.into());
             continue;
         }
         let ext = file_path.extension().and_then(|e| e.to_str());
         if ext != Some("yaml") && ext != Some("yml") {
-            errors.push(
-                ValidationError::FileEntryInvalidExtension {
-                    path: file_path,
-                }
-                .into(),
-            );
+            errors.push(ValidationError::FileEntryInvalidExtension { path: file_path }.into());
             continue;
         }
         if let Some(name) = file_path.file_name().and_then(|n| n.to_str())
@@ -304,7 +288,12 @@ files:
         std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
         let result = crate::loader::load_collection(&dir.path().join("manifest.yaml"));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("invalid namespace"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("invalid namespace")
+        );
     }
 
     #[test]

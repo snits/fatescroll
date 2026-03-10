@@ -162,7 +162,10 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
                 for entry in results {
                     if let Some(chains) = &entry.chain {
                         for chain_ref in chains {
-                            if registry.resolve(chain_ref.table_id(), current_namespace).is_none() {
+                            if registry
+                                .resolve(chain_ref.table_id(), current_namespace)
+                                .is_none()
+                            {
                                 errors.push(ValidationError::UnresolvedChain {
                                     table: name.clone(),
                                     reference: chain_ref.table_id().to_string(),
@@ -486,10 +489,7 @@ mod tests {
             }],
         };
         let err = validate_table(&table).unwrap_err();
-        assert!(matches!(
-            err,
-            ValidationError::InvalidDiceExpression { .. }
-        ));
+        assert!(matches!(err, ValidationError::InvalidDiceExpression { .. }));
     }
 
     #[test]
