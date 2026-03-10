@@ -1,0 +1,25 @@
+id: mishap
+name: Wizard Mishap
+type: simple
+tags:
+  - wizard
+  - mishap
+roll: 1d4
+results:
+  - min: 1
+    max: 1
+    text: "Roll twice and combine"
+    chain:
+      - table: mishap
+        reroll: [1]
+      - table: mishap
+        reroll: [1]
+  - min: 2
+    max: 2
+    text: "Hands glow blue for {1d6} minutes"
+  - min: 3
+    max: 3
+    text: "Lose sense of smell for {1d6} days"
+  - min: 4
+    max: 4
+    text: "Hair turns white"
