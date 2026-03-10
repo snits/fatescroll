@@ -13,4 +13,5 @@ serde_yaml = "0.9"
 thiserror = "2"
 
 [dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
 tempfile = "3"
