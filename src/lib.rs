@@ -10,6 +10,7 @@ pub mod models;
 pub mod registry;
 pub mod roller;
 pub mod search;
+pub mod init;
 pub mod validator;
 
 use std::path::Path;
