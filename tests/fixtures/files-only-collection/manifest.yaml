@@ -1,0 +1,8 @@
+name: Files Only Test
+version: "1.0"
+namespace: filesonly
+author: ~
+min_tool_version: ~
+files:
+  - path: ../file-entries-collection/shared/wilderness.yaml
+    namespace: filesonly.terrain

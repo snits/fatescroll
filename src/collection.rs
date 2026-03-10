@@ -122,6 +122,66 @@ pub fn discover_collection_files(
         }
     }
 
+    for file_entry in &manifest.files {
+        let file_path = manifest.base_path.join(&file_entry.path);
+        if !file_path.exists() {
+            errors.push(
+                ValidationError::FileEntryNotFound {
+                    path: file_path,
+                }
+                .into(),
+            );
+            continue;
+        }
+        if !file_path.is_file() {
+            errors.push(
+                ValidationError::FileEntryNotAFile {
+                    path: file_path,
+                }
+                .into(),
+            );
+            continue;
+        }
+        let ext = file_path.extension().and_then(|e| e.to_str());
+        if ext != Some("yaml") && ext != Some("yml") {
+            errors.push(
+                ValidationError::FileEntryInvalidExtension {
+                    path: file_path,
+                }
+                .into(),
+            );
+            continue;
+        }
+        if let Some(name) = file_path.file_name().and_then(|n| n.to_str())
+            && (name == "manifest.yaml" || name.ends_with(".manifest.yaml"))
+        {
+            continue;
+        }
+        let stem = match file_path.file_stem().and_then(|s| s.to_str()) {
+            Some(s) => s.to_string(),
+            None => continue,
+        };
+        let contents = match fs::read_to_string(&file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                errors.push(
+                    LoadError::FileRead {
+                        path: file_path,
+                        reason: e.to_string(),
+                    }
+                    .into(),
+                );
+                continue;
+            }
+        };
+        files.push(CollectionFile {
+            path: file_path,
+            namespace: file_entry.namespace.clone(),
+            stem,
+            contents,
+        });
+    }
+
     Ok((manifest, files, errors))
 }
 
@@ -152,6 +212,99 @@ mod tests {
     fn missing_manifest_returns_error() {
         let result = discover_collection_files(Path::new("/nonexistent/manifest.yaml"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn discovers_file_entries() {
+        let manifest_path = fixtures_path("file-entries-collection/manifest.yaml");
+        let (_manifest, files, errors) = discover_collection_files(&manifest_path).unwrap();
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert_eq!(files.len(), 2, "expected 2 files, got {}", files.len());
+        let file_entry = files.iter().find(|f| f.stem == "wilderness").unwrap();
+        assert_eq!(file_entry.namespace, "filetest.terrain");
+    }
+
+    #[test]
+    fn file_entry_not_found_is_soft_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+files:
+  - path: nonexistent.yaml
+    namespace: t.x
+"#;
+        std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
+        let (_m, files, errors) =
+            discover_collection_files(&dir.path().join("manifest.yaml")).unwrap();
+        assert!(files.is_empty());
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].to_string().contains("not found"));
+    }
+
+    #[test]
+    fn file_entry_pointing_to_directory_is_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::create_dir(dir.path().join("subdir")).unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+files:
+  - path: subdir
+    namespace: t.x
+"#;
+        std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
+        let (_m, files, errors) =
+            discover_collection_files(&dir.path().join("manifest.yaml")).unwrap();
+        assert!(files.is_empty());
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].to_string().contains("not a file"));
+    }
+
+    #[test]
+    fn file_entry_invalid_extension_is_error() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("table.json"), "{}").unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+files:
+  - path: table.json
+    namespace: t.x
+"#;
+        std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
+        let (_m, files, errors) =
+            discover_collection_files(&dir.path().join("manifest.yaml")).unwrap();
+        assert!(files.is_empty());
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].to_string().contains("invalid extension"));
+    }
+
+    #[test]
+    fn file_entry_invalid_namespace_caught_by_loader() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let table_yaml = r#"id: test-table
+name: Test
+type: simple
+tags: []
+roll: 1d4
+results:
+  - min: 1
+    max: 4
+    text: X
+"#;
+        std::fs::write(dir.path().join("test-table.yaml"), table_yaml).unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+files:
+  - path: test-table.yaml
+    namespace: INVALID
+"#;
+        std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
+        let result = crate::loader::load_collection(&dir.path().join("manifest.yaml"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid namespace"));
     }
 
     #[test]

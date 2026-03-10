@@ -15,7 +15,8 @@ A **collection** is a directory that contains a `manifest.yaml` file and referen
 | `namespace` | string | yes | Root namespace for the collection. Must follow namespace rules (see below). |
 | `author` | string | no | Author name. Use `~` (YAML null) to omit. |
 | `min_tool_version` | string | no | Minimum fatescroll version required. Use `~` to omit. |
-| `directories` | list | yes | List of directory entries. Each entry maps a directory to a namespace. |
+| `directories` | list | no | List of directory entries. Each entry maps a directory to a namespace. Defaults to empty if omitted. |
+| `files` | list | no | List of individual file entries. Defaults to empty if omitted. |
 
 Each entry in `directories` has:
 
@@ -23,6 +24,21 @@ Each entry in `directories` has:
 |---|---|---|
 | `path` | string | Path to the directory containing table YAML files. Can be relative to the manifest location (e.g., `terrain`, `../shared/npc`). |
 | `namespace` | string | Dot-separated namespace assigned to tables in this directory. |
+
+### File Entries
+
+Each entry in `files` has:
+
+| Field | Type | Description |
+|---|---|---|
+| `path` | string | Path to a single table YAML file. Can be relative to the manifest location (e.g., `shared/wilderness.yaml`, `../common/npc-occupation.yaml`). |
+| `namespace` | string | Dot-separated namespace assigned to this table. |
+
+File entries let you include individual table files without adding their entire directory. This is useful for sharing specific tables across collections or including files from outside the collection's directory tree.
+
+The table's `id` field must match the filename stem (e.g., a file named `wilderness.yaml` must contain `id: wilderness`).
+
+A manifest can use `directories`, `files`, or both. A files-only manifest (no `directories`) is valid.
 
 ### Example manifest.yaml
 
@@ -39,6 +55,9 @@ directories:
     namespace: test.encounters
   - path: npc
     namespace: test.npc
+files:
+  - path: ../shared/wilderness.yaml
+    namespace: test.terrain
 ```
 
 ## Namespaces and FQIDs
