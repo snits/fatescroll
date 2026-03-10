@@ -92,7 +92,7 @@ fn roll_recursive(
             let mut children = Vec::new();
             if let Some(chains) = &entry.chain {
                 for chain_ref in chains {
-                    let child = roll_recursive(registry, chain_ref, namespace, rng, depth + 1)?;
+                    let child = roll_recursive(registry, chain_ref.table_id(), namespace, rng, depth + 1)?;
                     children.push(child);
                 }
             }
@@ -140,7 +140,7 @@ fn interpolate_dice(text: &str, rng: &mut impl diceman::Rng) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ResultEntry, Table};
+    use crate::models::{ChainRef, ResultEntry, Table};
     use crate::registry::Registry;
 
     fn build_test_registry() -> Registry {
@@ -183,7 +183,7 @@ mod tests {
                         min: 1,
                         max: 2,
                         text: Some("Follow up".into()),
-                        chain: Some(vec!["simple".into()]),
+                        chain: Some(vec![ChainRef::Simple("simple".into())]),
                     },
                     ResultEntry {
                         min: 3,
@@ -272,7 +272,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Always chains".into()),
-                    chain: Some(vec!["child".into()]),
+                    chain: Some(vec![ChainRef::Simple("child".into())]),
                 }],
             },
         )
@@ -326,7 +326,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Loop".into()),
-                    chain: Some(vec!["b".into()]),
+                    chain: Some(vec![ChainRef::Simple("b".into())]),
                 }],
             },
         )
@@ -342,7 +342,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Loop".into()),
-                    chain: Some(vec!["a".into()]),
+                    chain: Some(vec![ChainRef::Simple("a".into())]),
                 }],
             },
         )
@@ -498,7 +498,7 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Branches".into()),
-                    chain: Some(vec!["child_a".into(), "child_b".into()]),
+                    chain: Some(vec![ChainRef::Simple("child_a".into()), ChainRef::Simple("child_b".into())]),
                 }],
             },
         )
