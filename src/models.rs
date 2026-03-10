@@ -102,13 +102,22 @@ pub struct DirectoryEntry {
 }
 
 #[derive(Debug, Deserialize, Clone)]
+pub struct FileEntry {
+    pub path: PathBuf,
+    pub namespace: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Manifest {
     pub name: String,
     pub version: String,
     pub namespace: String,
     pub author: Option<String>,
     pub min_tool_version: Option<String>,
+    #[serde(default)]
     pub directories: Vec<DirectoryEntry>,
+    #[serde(default)]
+    pub files: Vec<FileEntry>,
     #[serde(skip)]
     pub base_path: PathBuf,
 }
@@ -328,6 +337,59 @@ results:
             }
             _ => panic!("Expected Simple table"),
         }
+    }
+
+    #[test]
+    fn deserialize_manifest_with_files() {
+        let yaml = r#"
+name: Test Collection
+version: "1.0"
+namespace: test
+author: ~
+min_tool_version: ~
+directories:
+  - path: terrain
+    namespace: test.terrain
+files:
+  - path: ../shared/npc-occupation.yaml
+    namespace: test.npc
+"#;
+        let manifest: Manifest = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].namespace, "test.npc");
+    }
+
+    #[test]
+    fn deserialize_manifest_without_files_defaults_empty() {
+        let yaml = r#"
+name: Test Collection
+version: "1.0"
+namespace: test
+author: ~
+min_tool_version: ~
+directories:
+  - path: terrain
+    namespace: test.terrain
+"#;
+        let manifest: Manifest = serde_yaml::from_str(yaml).unwrap();
+        assert!(manifest.files.is_empty());
+    }
+
+    #[test]
+    fn deserialize_files_only_manifest() {
+        let yaml = r#"
+name: Files Only
+version: "1.0"
+namespace: test
+author: ~
+min_tool_version: ~
+files:
+  - path: some-table.yaml
+    namespace: test.tables
+"#;
+        let manifest: Manifest = serde_yaml::from_str(yaml).unwrap();
+        assert!(manifest.directories.is_empty());
+        assert_eq!(manifest.files.len(), 1);
     }
 
     #[test]
