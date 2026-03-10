@@ -112,7 +112,7 @@ Expected: FAIL — `ChainRef` type not found
 Add the `ChainRef` enum before the `ResultEntry` struct in `src/models.rs`:
 
 ```rust
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum ChainRef {
     Simple(String),
@@ -156,15 +156,60 @@ pub struct ResultEntry {
 Run: `cargo test --lib models::tests`
 Expected: PASS
 
-- [ ] **Step 5: Fix compilation errors in other files**
+- [ ] **Step 5a: Update existing model tests**
 
-Changing `ResultEntry.chain` from `Vec<String>` to `Vec<ChainRef>` will cause compilation errors in files that create `ResultEntry` values directly (tests in roller.rs, validator.rs, display.rs). Update all `chain: Some(vec!["foo".into()])` occurrences to `chain: Some(vec![ChainRef::Simple("foo".into())])`. Also update any code that iterates chains and treats elements as strings.
+The existing test `deserialize_simple_table_with_chains` in `src/models.rs` (line ~151) compares `chain` against `&["wolf-count"]` which won't compile with `Vec<ChainRef>`. Update assertions to use `table_id()`:
 
-Specific locations to update:
-- `src/roller.rs`: tests that construct `ResultEntry` values, and the chain iteration loop at line 93-98 (use `chain_ref.table_id()`)
-- `src/validator.rs`: line 164-165 (use `chain_ref.table_id()` and `chain_ref.table_id().to_string()`)
-- `src/display.rs`: line 48-53 (render chain refs using `table_id()` for display; for modified refs, optionally append reroll info)
-- `src/fixer.rs`: lines 70-73 (extract_references must also handle mapping chain entries with "table" key); lines 111-117 (update_references must also handle mapping chain entries)
+```rust
+// Replace:
+//   assert_eq!(results[0].chain.as_ref().unwrap(), &["wolf-count"]);
+// With:
+assert_eq!(results[0].chain.as_ref().unwrap().len(), 1);
+assert_eq!(results[0].chain.as_ref().unwrap()[0].table_id(), "wolf-count");
+// Same pattern for bandit-strength/bandit-motivation assertions
+```
+
+Also update all `chain: Some(vec!["foo".into()])` occurrences across model tests to `chain: Some(vec![ChainRef::Simple("foo".into())])`.
+
+- [ ] **Step 5b: Update roller.rs**
+
+In `src/roller.rs` line 93-98, update chain iteration to use `table_id()`:
+```rust
+// Change: roll_recursive(registry, chain_ref, namespace, rng, depth + 1)
+// To:     roll_recursive(registry, chain_ref.table_id(), namespace, rng, depth + 1)
+```
+
+Also update all test `ResultEntry` constructions from `chain: Some(vec!["foo".into()])` to `chain: Some(vec![ChainRef::Simple("foo".into())])`.
+
+- [ ] **Step 5c: Update validator.rs**
+
+In `src/validator.rs` lines 164-169, update to use `table_id()`:
+```rust
+// Change: registry.resolve(chain_ref, current_namespace)
+// To:     registry.resolve(chain_ref.table_id(), current_namespace)
+// Change: reference: chain_ref.clone()
+// To:     reference: chain_ref.table_id().to_string()
+```
+
+Also update all test `ResultEntry` constructions from `chain: Some(vec!["foo".into()])` to `chain: Some(vec![ChainRef::Simple("foo".into())])`.
+
+- [ ] **Step 5d: Update display.rs (minimal compile fix only)**
+
+In `src/display.rs` lines 48-53, replace `chains.join(", ")` with a minimal compile fix. Do NOT add reroll display logic — that is Task 7's scope.
+
+```rust
+let chain_str = match &entry.chain {
+    Some(chains) if !chains.is_empty() => {
+        let refs: Vec<&str> = chains.iter().map(|c| c.table_id()).collect();
+        format!(" → {}", refs.join(", "))
+    }
+    _ => String::new(),
+};
+```
+
+Also update all test `ResultEntry` constructions from `chain: Some(vec!["foo".into()])` to `chain: Some(vec![ChainRef::Simple("foo".into())])`.
+
+**Note:** Do NOT modify `src/fixer.rs` here — it operates on raw `serde_yaml::Value`, not typed models, so changing `ResultEntry.chain` causes zero compile errors there. Fixer changes are handled in Task 6.
 
 - [ ] **Step 6: Run full test suite**
 
@@ -174,7 +219,7 @@ Expected: ALL PASS (all 92 existing tests continue to pass)
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/models.rs src/roller.rs src/validator.rs src/display.rs src/fixer.rs
+git add src/models.rs src/roller.rs src/validator.rs src/display.rs
 git commit -s -m "feat: add ChainRef enum for structured chain references
 
 Introduces ChainRef enum with Simple (plain string) and Modified
@@ -644,7 +689,52 @@ for chain in chains {
 Run: `cargo test --lib fixer::tests::extract_references_from_structured_chain`
 Expected: PASS
 
-- [ ] **Step 5: Update update_references for structured chain refs**
+- [ ] **Step 5: Write failing test for update_references with structured chain ref**
+
+```rust
+#[test]
+fn update_references_in_structured_chain() {
+    let yaml = r#"
+id: mishap
+name: Wizard Mishap
+type: simple
+tags: []
+roll: 1d4
+results:
+  - min: 1
+    max: 1
+    text: Roll twice
+    chain:
+      - table: old-name
+        reroll: [1]
+      - plain-old-ref
+  - min: 2
+    max: 4
+    text: Normal
+"#;
+    let mut value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+    let mut corrections = std::collections::HashMap::new();
+    corrections.insert("old-name".to_string(), "new-name".to_string());
+    corrections.insert("plain-old-ref".to_string(), "plain-new-ref".to_string());
+
+    let updated = update_references(&mut value, &corrections);
+    assert_eq!(updated.len(), 2);
+    assert!(updated.contains(&("old-name".to_string(), "new-name".to_string())));
+    assert!(updated.contains(&("plain-old-ref".to_string(), "plain-new-ref".to_string())));
+
+    // Verify the YAML was actually modified
+    let refs = extract_references(&value);
+    assert!(refs.contains(&"new-name".to_string()));
+    assert!(refs.contains(&"plain-new-ref".to_string()));
+}
+```
+
+- [ ] **Step 6: Run test to verify it fails**
+
+Run: `cargo test --lib fixer::tests::update_references_in_structured_chain`
+Expected: FAIL — structured chain ref not updated (only plain-old-ref is updated)
+
+- [ ] **Step 7: Update update_references for structured chain refs**
 
 In `update_references`, update the chain iteration (lines 111-117) to also handle mapping entries:
 
@@ -669,12 +759,12 @@ for chain in chains {
 }
 ```
 
-- [ ] **Step 6: Run full test suite**
+- [ ] **Step 8: Run full test suite**
 
 Run: `cargo test`
 Expected: ALL PASS
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/fixer.rs
@@ -843,8 +933,7 @@ Add to `tests/cli_integration.rs`:
 #[test]
 fn roll_mishap_table_with_reroll_chain() {
     // Test that the mishap table with structured chain refs loads and rolls
-    let cmd = Command::cargo_bin("fatescroll").unwrap();
-    let output = cmd
+    let output = fatescroll_bin()
         .args(["roll", "--collection", "tests/fixtures/valid-collection",
                "test.encounters.mishap"])
         .output()
@@ -861,8 +950,7 @@ fn roll_mishap_table_with_reroll_chain() {
 ```rust
 #[test]
 fn show_mishap_table_displays_reroll() {
-    let cmd = Command::cargo_bin("fatescroll").unwrap();
-    let output = cmd
+    let output = fatescroll_bin()
         .args(["show", "--collection", "tests/fixtures/valid-collection",
                "test.encounters.mishap"])
         .output()
