@@ -98,7 +98,7 @@ Each entry in `results` has:
 | `min` | integer | yes | Minimum roll value (inclusive) that selects this result. |
 | `max` | integer | yes | Maximum roll value (inclusive) that selects this result. |
 | `text` | string | no | The result text displayed when this entry is selected. |
-| `chain` | list of strings | no | Table references to roll on after this result (see Chaining). |
+| `chain` | list of strings or chain references | no | Table references to roll on after this result (see Chaining). Each entry can be a plain string (table ID) or a structured reference with modifiers (see Reroll Modifiers). |
 
 The result ranges must cover every possible value of the dice expression with no gaps and no overlaps. For example, `1d6` produces values 1 through 6, so your results must cover exactly that range.
 
@@ -209,6 +209,76 @@ Wilderness Encounter (rolled 4): Bandit camp
 ```
 
 Results without a `chain` field (like "Abandoned campsite") produce no children.
+
+### Reroll Modifiers
+
+Chain references can include a **reroll modifier** that causes fatescroll to reroll certain dice values when following that chain. This is useful for table entries that chain back to the same table but need to exclude certain results on subsequent rolls.
+
+#### Structured Chain Reference Schema
+
+Instead of a plain string, a chain entry can be an object:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `table` | string | yes | Table reference (same resolution rules as plain string references). |
+| `reroll` | list of integers | no | Dice values to reroll. If the chained roll produces one of these values, fatescroll rerolls until a non-excluded value appears. |
+
+Plain string references and structured references can be mixed in the same `chain` list.
+
+#### Example: Wizard Mishap Table
+
+Some RPG systems have tables where rolling a specific value means "roll again on this table, but reroll that value." For example, Shadowdark's wizard mishap table says rolling a 1 means "roll twice on this table and combine the results, rerolling further 1s."
+
+```yaml
+name: Wizard Mishap
+type: simple
+tags:
+  - wizard
+  - mishap
+roll: 1d12
+results:
+  - min: 1
+    max: 1
+    text: "Roll twice and combine"
+    chain:
+      - table: wizard-mishap
+        reroll: [1]
+      - table: wizard-mishap
+        reroll: [1]
+  - min: 2
+    max: 2
+    text: "Hands glow blue for {1d6} minutes"
+  - min: 3
+    max: 12
+    text: "Other mishap effects..."
+```
+
+When a player rolls a 1 on this table, fatescroll chains to the same table twice. Each chained roll skips the value 1 -- if the dice land on 1, fatescroll rerolls automatically. This prevents the recursive explosion that would happen if the chained rolls also triggered the "roll twice" entry.
+
+The reroll constraint only applies to the immediate chained roll. It does not propagate through further chains. Each chain reference independently specifies its own reroll values.
+
+#### Mixing Plain and Structured References
+
+You can use plain strings and structured references in the same chain list:
+
+```yaml
+chain:
+  - animal-type
+  - table: encounter-table
+    reroll: [1, 2]
+```
+
+Here, `animal-type` is rolled normally, while `encounter-table` rerolls if the dice produce a 1 or 2.
+
+#### Safety Limit
+
+fatescroll limits reroll attempts to 100. If the reroll values cover all possible outcomes of the target table's dice expression, rolling stops with an error:
+
+```
+reroll attempts exhausted (100) for table 'Wizard Mishap' with reroll values [1, 2, 3, 4]
+```
+
+To avoid this, make sure your reroll values leave at least one reachable result in the target table.
 
 ### Reference Resolution
 
