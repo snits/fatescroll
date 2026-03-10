@@ -1,0 +1,13 @@
+id: wilderness
+name: Wilderness Terrain
+type: simple
+tags:
+  - terrain
+roll: 1d4
+results:
+  - min: 1
+    max: 2
+    text: Forest
+  - min: 3
+    max: 4
+    text: Plains
