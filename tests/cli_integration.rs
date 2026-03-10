@@ -507,3 +507,157 @@ fn validate_named_manifest_direct_file_path() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn init_explicit_1d6() {
+    let output = fatescroll_bin()
+        .args(["init", "--roll", "1d6", "--name", "Test Table"])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("name: Test Table"));
+    assert!(stdout.contains("roll: 1d6"));
+    assert!(stdout.contains("type: simple"));
+    assert_eq!(stdout.matches("  - min:").count(), 6);
+}
+
+#[test]
+fn init_flat_distribution() {
+    let output = fatescroll_bin()
+        .args([
+            "init", "--entries", "8", "--distribution", "flat",
+            "--name", "Flat Table",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("roll: 1d8"));
+    assert_eq!(stdout.matches("  - min:").count(), 8);
+}
+
+#[test]
+fn init_bell_exact_match() {
+    let output = fatescroll_bin()
+        .args([
+            "init", "--entries", "11", "--distribution", "bell",
+            "--name", "Bell Table",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("roll: 2d6"));
+    assert_eq!(stdout.matches("  - min:").count(), 11);
+}
+
+#[test]
+fn init_bell_no_exact_match_shows_suggestions() {
+    let output = fatescroll_bin()
+        .args([
+            "init", "--entries", "12", "--distribution", "bell",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("2d6"));
+    assert!(stderr.contains("2d7"));
+    assert!(stderr.contains("With 2 dice:"));
+    assert!(stderr.contains("With 3 dice:"));
+}
+
+#[test]
+fn init_bell_too_few_entries() {
+    let output = fatescroll_bin()
+        .args([
+            "init", "--entries", "2", "--distribution", "bell",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("at least 3 entries"));
+}
+
+#[test]
+fn init_output_to_file() {
+    let dir = TempDir::new().unwrap();
+    let output_file = dir.path().join("test-table.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "init", "--roll", "1d4", "--name", "File Table",
+            "--output", &output_file.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let contents = std::fs::read_to_string(&output_file).unwrap();
+    assert!(contents.contains("roll: 1d4"));
+    assert_eq!(contents.matches("  - min:").count(), 4);
+}
+
+#[test]
+fn init_output_refuses_overwrite() {
+    let dir = TempDir::new().unwrap();
+    let output_file = dir.path().join("existing.yaml");
+    std::fs::write(&output_file, "existing content").unwrap();
+    let output = fatescroll_bin()
+        .args([
+            "init", "--roll", "1d4",
+            "--output", &output_file.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("already exists"));
+}
+
+#[test]
+fn init_invalid_dice_expression() {
+    let output = fatescroll_bin()
+        .args(["init", "--roll", "1z6"])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+}
+
+#[test]
+fn init_zero_entries() {
+    let output = fatescroll_bin()
+        .args([
+            "init", "--entries", "0", "--distribution", "flat",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("at least 1"));
+}
+
+#[test]
+fn init_requires_roll_or_entries() {
+    let output = fatescroll_bin()
+        .args(["init", "--name", "No Dice"])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+}

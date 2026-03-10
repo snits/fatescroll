@@ -64,6 +64,24 @@ enum Commands {
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
         table_id: String,
     },
+    /// Generate a table YAML template
+    Init {
+        /// Dice expression (e.g., "1d6", "2d8+1")
+        #[arg(long, conflicts_with = "entries")]
+        roll: Option<String>,
+        /// Number of result entries desired
+        #[arg(long, conflicts_with = "roll", requires = "distribution")]
+        entries: Option<u32>,
+        /// Distribution type: flat or bell
+        #[arg(long, requires = "entries")]
+        distribution: Option<String>,
+        /// Table display name
+        #[arg(long, default_value = "Untitled Table")]
+        name: String,
+        /// Write output to file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
     /// Import table files into a collection
     Import {
         /// Path to collection directory or manifest file
@@ -186,6 +204,13 @@ fn main() {
             table_id,
         } => resolve_collection(collection)
             .and_then(|collection| cmd_show(&collection, &table_id)),
+        Commands::Init {
+            roll,
+            entries,
+            distribution,
+            name,
+            output,
+        } => cmd_init(roll, entries, distribution, &name, output),
         Commands::Import {
             collection,
             target_dir,
@@ -367,6 +392,95 @@ fn cmd_search(
             }
         }
     }
+    Ok(())
+}
+
+fn cmd_init(
+    roll: Option<String>,
+    entries: Option<u32>,
+    distribution: Option<String>,
+    name: &str,
+    output: Option<PathBuf>,
+) -> Result<(), fatescroll::Error> {
+    let roll_expr = if let Some(expr) = roll {
+        expr
+    } else if let Some(count) = entries {
+        let dist = match distribution.as_deref() {
+            Some("flat") => fatescroll::init::Distribution::Flat,
+            Some("bell") => fatescroll::init::Distribution::Bell,
+            Some(other) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("unknown distribution type: '{other}' (expected 'flat' or 'bell')"),
+                )
+                .into());
+            }
+            None => unreachable!("clap requires --distribution with --entries"),
+        };
+
+        if count == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "entries must be at least 1",
+            )
+            .into());
+        }
+
+        if matches!(dist, fatescroll::init::Distribution::Bell) && count < 3 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "bell curves require at least 3 entries (minimum is 2d2)",
+            )
+            .into());
+        }
+
+        match fatescroll::init::calculate_distribution(count, dist) {
+            fatescroll::init::DistributionResult::Exact(expr) => expr,
+            fatescroll::init::DistributionResult::Suggestions(suggestions) => {
+                eprintln!("No exact match for {count} entries with bell curve.");
+                let mut current_dice = 0;
+                for s in &suggestions {
+                    if s.num_dice != current_dice {
+                        current_dice = s.num_dice;
+                        eprintln!("  With {} dice:", s.num_dice);
+                    }
+                    eprintln!(
+                        "    {} → {} entries (range {}-{})",
+                        s.expression, s.entries, s.range_min, s.range_max
+                    );
+                }
+                eprintln!("Use --roll <expression> to generate.");
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "no exact bell curve match",
+                )
+                .into());
+            }
+        }
+    } else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "specify --roll <expression> or --entries <count> --distribution <type>",
+        )
+        .into());
+    };
+
+    let template = fatescroll::init::generate_template(&roll_expr, name)?;
+
+    if let Some(path) = output {
+        if path.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("output file already exists: {}", path.display()),
+            )
+            .into());
+        }
+        std::fs::write(&path, &template)?;
+        eprintln!("Wrote template to {}", path.display());
+    } else {
+        print!("{template}");
+    }
+
     Ok(())
 }
 

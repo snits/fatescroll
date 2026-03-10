@@ -71,7 +71,7 @@ pub fn calculate_distribution(entries: u32, dist: Distribution) -> DistributionR
 
             for num_dice in 2..=3u32 {
                 let numerator = entries - 1;
-                if numerator % num_dice == 0 {
+                if numerator.is_multiple_of(num_dice) {
                     let sides = numerator / num_dice + 1;
                     if sides >= 2 {
                         return DistributionResult::Exact(format!("{num_dice}d{sides}"));
