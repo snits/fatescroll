@@ -171,15 +171,17 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Validate { collection, fix, update_refs } => {
-            resolve_collection(collection).and_then(|collection| {
-                if fix {
-                    cmd_fix(&collection, update_refs)
-                } else {
-                    cmd_validate(&collection)
-                }
-            })
-        }
+        Commands::Validate {
+            collection,
+            fix,
+            update_refs,
+        } => resolve_collection(collection).and_then(|collection| {
+            if fix {
+                cmd_fix(&collection, update_refs)
+            } else {
+                cmd_validate(&collection)
+            }
+        }),
         Commands::Roll {
             collection,
             table_id,
@@ -202,8 +204,7 @@ fn main() {
         Commands::Show {
             collection,
             table_id,
-        } => resolve_collection(collection)
-            .and_then(|collection| cmd_show(&collection, &table_id)),
+        } => resolve_collection(collection).and_then(|collection| cmd_show(&collection, &table_id)),
         Commands::Init {
             roll,
             entries,
@@ -238,15 +239,8 @@ fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Er
             fatescroll::fixer::FixAction::Added { path, id } => {
                 println!("Added id '{id}' to {}", path.display());
             }
-            fatescroll::fixer::FixAction::Corrected {
-                path,
-                old_id,
-                id,
-            } => {
-                println!(
-                    "Corrected id '{old_id}' -> '{id}' in {}",
-                    path.display()
-                );
+            fatescroll::fixer::FixAction::Corrected { path, old_id, id } => {
+                println!("Corrected id '{old_id}' -> '{id}' in {}", path.display());
             }
             fatescroll::fixer::FixAction::Ok { path } => {
                 println!("OK: {}", path.display());
@@ -290,9 +284,10 @@ fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Er
         for err in &result.errors {
             eprintln!("  - {err}");
         }
-        return Err(std::io::Error::other(
-            format!("{} file(s) could not be processed", result.errors.len()),
-        )
+        return Err(std::io::Error::other(format!(
+            "{} file(s) could not be processed",
+            result.errors.len()
+        ))
         .into());
     }
 
@@ -315,11 +310,12 @@ fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> 
 
 fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> {
     let registry = fatescroll::load_collection(collection)?;
-    let table = registry
-        .get(table_id)
-        .ok_or_else(|| fatescroll::error::RollError::TableNotFound {
-            id: table_id.to_string(),
-        })?;
+    let table =
+        registry
+            .get(table_id)
+            .ok_or_else(|| fatescroll::error::RollError::TableNotFound {
+                id: table_id.to_string(),
+            })?;
     print!("{}", fatescroll::display::format_table(table_id, table));
     Ok(())
 }

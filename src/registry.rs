@@ -53,7 +53,8 @@ impl Registry {
 
         // Step 3: Global bare id fallback — search all tables by bare id suffix
         let suffix = format!(".{reference}");
-        let candidates: Vec<_> = self.tables
+        let candidates: Vec<_> = self
+            .tables
             .iter()
             .filter(|(fqid, _)| fqid.ends_with(&suffix))
             .collect();
@@ -185,8 +186,7 @@ mod tests {
         };
         reg.register("test.encounters.wolf-count".into(), table1)
             .unwrap();
-        reg.register("test.npc.wolf-count".into(), table2)
-            .unwrap();
+        reg.register("test.npc.wolf-count".into(), table2).unwrap();
 
         // Resolve from a third namespace — ambiguous, should return None
         let result = reg.resolve("wolf-count", "test.terrain");
@@ -212,8 +212,7 @@ mod tests {
         };
         reg.register("test.encounters.wolf-count".into(), local)
             .unwrap();
-        reg.register("test.npc.wolf-count".into(), remote)
-            .unwrap();
+        reg.register("test.npc.wolf-count".into(), remote).unwrap();
 
         // Resolve from test.encounters — should get the local one (relative match)
         let result = reg.resolve("wolf-count", "test.encounters");

@@ -122,7 +122,10 @@ fn validate_fix_adds_missing_ids() {
 
     // Verify the file was actually fixed
     let content = std::fs::read_to_string(tables_dir.join("my-table.yaml")).unwrap();
-    assert!(content.contains("id: my-table"), "File should contain id: my-table, got: {content}");
+    assert!(
+        content.contains("id: my-table"),
+        "File should contain id: my-table, got: {content}"
+    );
 }
 
 #[test]
@@ -173,7 +176,16 @@ fn search_tags_lists_unique_tags() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    for expected_tag in ["animal", "bandit", "encounter", "generator", "merchant", "npc", "terrain", "wilderness"] {
+    for expected_tag in [
+        "animal",
+        "bandit",
+        "encounter",
+        "generator",
+        "merchant",
+        "npc",
+        "terrain",
+        "wilderness",
+    ] {
         assert!(
             stdout.contains(expected_tag),
             "Expected tag '{expected_tag}' in output, got: {stdout}"
@@ -430,11 +442,7 @@ fn validate_named_manifest_in_directory() {
     ).unwrap();
 
     let output = fatescroll_bin()
-        .args([
-            "validate",
-            "--collection",
-            &dir.path().to_string_lossy(),
-        ])
+        .args(["validate", "--collection", &dir.path().to_string_lossy()])
         .output()
         .expect("failed to run fatescroll");
     assert!(
@@ -461,11 +469,7 @@ fn validate_multiple_manifests_error() {
     ).unwrap();
 
     let output = fatescroll_bin()
-        .args([
-            "validate",
-            "--collection",
-            &dir.path().to_string_lossy(),
-        ])
+        .args(["validate", "--collection", &dir.path().to_string_lossy()])
         .output()
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
@@ -494,11 +498,7 @@ fn validate_named_manifest_direct_file_path() {
 
     let manifest_path = dir.path().join("campaign.manifest.yaml");
     let output = fatescroll_bin()
-        .args([
-            "validate",
-            "--collection",
-            &manifest_path.to_string_lossy(),
-        ])
+        .args(["validate", "--collection", &manifest_path.to_string_lossy()])
         .output()
         .expect("failed to run fatescroll");
     assert!(
@@ -586,8 +586,13 @@ fn init_explicit_1d6() {
 fn init_flat_distribution() {
     let output = fatescroll_bin()
         .args([
-            "init", "--entries", "8", "--distribution", "flat",
-            "--name", "Flat Table",
+            "init",
+            "--entries",
+            "8",
+            "--distribution",
+            "flat",
+            "--name",
+            "Flat Table",
         ])
         .output()
         .expect("failed to run fatescroll");
@@ -605,8 +610,13 @@ fn init_flat_distribution() {
 fn init_bell_exact_match() {
     let output = fatescroll_bin()
         .args([
-            "init", "--entries", "11", "--distribution", "bell",
-            "--name", "Bell Table",
+            "init",
+            "--entries",
+            "11",
+            "--distribution",
+            "bell",
+            "--name",
+            "Bell Table",
         ])
         .output()
         .expect("failed to run fatescroll");
@@ -623,9 +633,7 @@ fn init_bell_exact_match() {
 #[test]
 fn init_bell_no_exact_match_shows_suggestions() {
     let output = fatescroll_bin()
-        .args([
-            "init", "--entries", "12", "--distribution", "bell",
-        ])
+        .args(["init", "--entries", "12", "--distribution", "bell"])
         .output()
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
@@ -639,9 +647,7 @@ fn init_bell_no_exact_match_shows_suggestions() {
 #[test]
 fn init_bell_too_few_entries() {
     let output = fatescroll_bin()
-        .args([
-            "init", "--entries", "2", "--distribution", "bell",
-        ])
+        .args(["init", "--entries", "2", "--distribution", "bell"])
         .output()
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
@@ -655,8 +661,13 @@ fn init_output_to_file() {
     let output_file = dir.path().join("test-table.yaml");
     let output = fatescroll_bin()
         .args([
-            "init", "--roll", "1d4", "--name", "File Table",
-            "--output", &output_file.to_string_lossy(),
+            "init",
+            "--roll",
+            "1d4",
+            "--name",
+            "File Table",
+            "--output",
+            &output_file.to_string_lossy(),
         ])
         .output()
         .expect("failed to run fatescroll");
@@ -677,8 +688,11 @@ fn init_output_refuses_overwrite() {
     std::fs::write(&output_file, "existing content").unwrap();
     let output = fatescroll_bin()
         .args([
-            "init", "--roll", "1d4",
-            "--output", &output_file.to_string_lossy(),
+            "init",
+            "--roll",
+            "1d4",
+            "--output",
+            &output_file.to_string_lossy(),
         ])
         .output()
         .expect("failed to run fatescroll");
@@ -699,9 +713,7 @@ fn init_invalid_dice_expression() {
 #[test]
 fn init_zero_entries() {
     let output = fatescroll_bin()
-        .args([
-            "init", "--entries", "0", "--distribution", "flat",
-        ])
+        .args(["init", "--entries", "0", "--distribution", "flat"])
         .output()
         .expect("failed to run fatescroll");
     assert!(!output.status.success());

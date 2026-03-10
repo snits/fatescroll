@@ -595,7 +595,10 @@ mod tests {
                     min: 1,
                     max: 4,
                     text: Some("Branches".into()),
-                    chain: Some(vec![ChainRef::Simple("child_a".into()), ChainRef::Simple("child_b".into())]),
+                    chain: Some(vec![
+                        ChainRef::Simple("child_a".into()),
+                        ChainRef::Simple("child_b".into()),
+                    ]),
                 }],
             },
         )

@@ -226,7 +226,12 @@ tables:
 "#;
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
-            Table::Compound { id, name, tags, tables } => {
+            Table::Compound {
+                id,
+                name,
+                tags,
+                tables,
+            } => {
                 assert_eq!(id, "quick-npc");
                 assert_eq!(name, "Quick NPC");
                 assert_eq!(tags, vec!["npc", "generator"]);

@@ -17,7 +17,10 @@ pub enum RefHandling {
 #[derive(Debug)]
 pub enum FixAction {
     /// The `id` field was missing and has been added.
-    Added { path: std::path::PathBuf, id: String },
+    Added {
+        path: std::path::PathBuf,
+        id: String,
+    },
     /// The `id` field had a wrong value and has been corrected.
     Corrected {
         path: std::path::PathBuf,
@@ -199,10 +202,7 @@ pub fn fix_collection(manifest_path: &Path, ref_handling: RefHandling) -> Result
             if existing_id == &expected_id {
                 result.actions.push(FixAction::Ok { path: file.path });
             } else {
-                let old_id = existing_id
-                    .as_str()
-                    .unwrap_or("<non-string>")
-                    .to_string();
+                let old_id = existing_id.as_str().unwrap_or("<non-string>").to_string();
                 mapping.insert(id_key, expected_id);
                 let yaml_out = serde_yaml::to_string(&value)?;
                 fs::write(&file.path, &yaml_out)?;
@@ -377,7 +377,10 @@ directories:
     #[test]
     fn fix_reports_unparseable_yaml() {
         let dir = setup_collection(&[
-            ("good.yaml", "id: good\nname: Good\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n"),
+            (
+                "good.yaml",
+                "id: good\nname: Good\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n",
+            ),
             ("bad.yaml", "{{{{not valid yaml at all"),
         ]);
         let manifest = dir.path().join("manifest.yaml");
@@ -429,7 +432,11 @@ directories:
         // Should warn about stale reference in wilderness.yaml
         assert_eq!(result.warnings.len(), 1);
         match &result.warnings[0] {
-            FixWarning::StaleReference { reference, suggested, .. } => {
+            FixWarning::StaleReference {
+                reference,
+                suggested,
+                ..
+            } => {
                 assert_eq!(reference, "wolf-counter");
                 assert_eq!(suggested, "wolf-count");
             }
@@ -501,12 +508,21 @@ directories:
         let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 
         // npc-occupation.yaml should have its id corrected
-        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { old_id, .. } if old_id == "npc-job")));
+        assert!(
+            result
+                .actions
+                .iter()
+                .any(|a| matches!(a, FixAction::Corrected { old_id, .. } if old_id == "npc-job"))
+        );
 
         // Should warn about stale reference in quick-npc.yaml
         assert_eq!(result.warnings.len(), 1);
         match &result.warnings[0] {
-            FixWarning::StaleReference { reference, suggested, .. } => {
+            FixWarning::StaleReference {
+                reference,
+                suggested,
+                ..
+            } => {
                 assert_eq!(reference, "npc-job");
                 assert_eq!(suggested, "npc-occupation");
             }
@@ -529,8 +545,18 @@ directories:
         let result = fix_collection(&manifest, RefHandling::Update).unwrap();
 
         // Both ids should be corrected
-        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "wolf-count")));
-        assert!(result.actions.iter().any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "encounter")));
+        assert!(
+            result
+                .actions
+                .iter()
+                .any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "wolf-count"))
+        );
+        assert!(
+            result
+                .actions
+                .iter()
+                .any(|a| matches!(a, FixAction::Corrected { id, .. } if id == "encounter"))
+        );
 
         // Reference should be updated
         assert!(result.actions.iter().any(|a| matches!(a,
@@ -541,8 +567,14 @@ directories:
         // Verify encounter.yaml has BOTH corrections: correct id AND updated reference
         let content = fs::read_to_string(dir.path().join("tables/encounter.yaml")).unwrap();
         assert!(content.contains("id: encounter"), "id should be corrected");
-        assert!(content.contains("wolf-count"), "reference should be updated to wolf-count");
-        assert!(!content.contains("wolf-counter"), "old reference should be gone");
+        assert!(
+            content.contains("wolf-count"),
+            "reference should be updated to wolf-count"
+        );
+        assert!(
+            !content.contains("wolf-counter"),
+            "old reference should be gone"
+        );
         assert!(!content.contains("encountr"), "old id should be gone");
     }
 
@@ -610,12 +642,10 @@ results:
 
     #[test]
     fn fix_no_warnings_when_no_corrections() {
-        let dir = setup_collection(&[
-            (
-                "already-correct.yaml",
-                "id: already-correct\nname: Correct\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n",
-            ),
-        ]);
+        let dir = setup_collection(&[(
+            "already-correct.yaml",
+            "id: already-correct\nname: Correct\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: X\n",
+        )]);
         let manifest = dir.path().join("manifest.yaml");
         let result = fix_collection(&manifest, RefHandling::WarnOnly).unwrap();
 

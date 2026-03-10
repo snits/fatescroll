@@ -11,7 +11,8 @@ use crate::validator::{validate_namespace, validate_table};
 /// Load a collection from a manifest file path.
 /// Returns a populated Registry or collected errors.
 pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
-    let (manifest, files, mut errors) = crate::collection::discover_collection_files(manifest_path)?;
+    let (manifest, files, mut errors) =
+        crate::collection::discover_collection_files(manifest_path)?;
 
     let mut registry = Registry::new();
 
