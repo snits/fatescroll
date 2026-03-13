@@ -1,5 +1,5 @@
 // ABOUTME: CLI binary for fatescroll random table tool.
-// ABOUTME: Thin wrapper over the fatescroll library using clap.
+// ABOUTME: Thin wrapper over the fatescroll-core library using clap.
 
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
@@ -118,7 +118,7 @@ fn find_manifests(dir: &Path) -> Vec<PathBuf> {
     manifests
 }
 
-fn resolve_manifest_in_dir(dir: &Path) -> Result<PathBuf, fatescroll::Error> {
+fn resolve_manifest_in_dir(dir: &Path) -> Result<PathBuf, fatescroll_core::Error> {
     let manifests = find_manifests(dir);
     match manifests.len() {
         0 => Err(std::io::Error::new(
@@ -148,7 +148,7 @@ fn resolve_manifest_in_dir(dir: &Path) -> Result<PathBuf, fatescroll::Error> {
 /// Resolve the manifest path from explicit flag or CWD detection.
 ///
 /// Accepts either a manifest file path or a directory containing manifests.
-fn resolve_collection(explicit: Option<PathBuf>) -> Result<PathBuf, fatescroll::Error> {
+fn resolve_collection(explicit: Option<PathBuf>) -> Result<PathBuf, fatescroll_core::Error> {
     if let Some(path) = explicit {
         if path.is_file() {
             return Ok(path);
@@ -226,26 +226,26 @@ fn main() {
     }
 }
 
-fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Error> {
+fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll_core::Error> {
     let ref_handling = if update_refs {
-        fatescroll::fixer::RefHandling::Update
+        fatescroll_core::fixer::RefHandling::Update
     } else {
-        fatescroll::fixer::RefHandling::WarnOnly
+        fatescroll_core::fixer::RefHandling::WarnOnly
     };
-    let result = fatescroll::fixer::fix_collection(manifest_path, ref_handling)?;
+    let result = fatescroll_core::fixer::fix_collection(manifest_path, ref_handling)?;
 
     for action in &result.actions {
         match action {
-            fatescroll::fixer::FixAction::Added { path, id } => {
+            fatescroll_core::fixer::FixAction::Added { path, id } => {
                 println!("Added id '{id}' to {}", path.display());
             }
-            fatescroll::fixer::FixAction::Corrected { path, old_id, id } => {
+            fatescroll_core::fixer::FixAction::Corrected { path, old_id, id } => {
                 println!("Corrected id '{old_id}' -> '{id}' in {}", path.display());
             }
-            fatescroll::fixer::FixAction::Ok { path } => {
+            fatescroll_core::fixer::FixAction::Ok { path } => {
                 println!("OK: {}", path.display());
             }
-            fatescroll::fixer::FixAction::UpdatedReference {
+            fatescroll_core::fixer::FixAction::UpdatedReference {
                 path,
                 old_ref,
                 new_ref,
@@ -262,7 +262,7 @@ fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Er
         eprintln!("\nWarnings:");
         for warning in &result.warnings {
             match warning {
-                fatescroll::fixer::FixWarning::StaleReference {
+                fatescroll_core::fixer::FixWarning::StaleReference {
                     path,
                     reference,
                     suggested,
@@ -295,32 +295,35 @@ fn cmd_fix(manifest_path: &Path, update_refs: bool) -> Result<(), fatescroll::Er
     Ok(())
 }
 
-fn cmd_validate(collection: &Path) -> Result<(), fatescroll::Error> {
-    let _registry = fatescroll::load_collection(collection)?;
+fn cmd_validate(collection: &Path) -> Result<(), fatescroll_core::Error> {
+    let _registry = fatescroll_core::load_collection(collection)?;
     println!("Collection is valid.");
     Ok(())
 }
 
-fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> {
-    let registry = fatescroll::load_collection(collection)?;
-    let result = fatescroll::roller::roll(&registry, table_id)?;
+fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Error> {
+    let registry = fatescroll_core::load_collection(collection)?;
+    let result = fatescroll_core::roller::roll(&registry, table_id)?;
     print_roll_result(&result, 0);
     Ok(())
 }
 
-fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll::Error> {
-    let registry = fatescroll::load_collection(collection)?;
+fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Error> {
+    let registry = fatescroll_core::load_collection(collection)?;
     let table =
         registry
             .get(table_id)
-            .ok_or_else(|| fatescroll::error::RollError::TableNotFound {
+            .ok_or_else(|| fatescroll_core::error::RollError::TableNotFound {
                 id: table_id.to_string(),
             })?;
-    print!("{}", fatescroll::display::format_table(table_id, table));
+    print!(
+        "{}",
+        fatescroll_core::display::format_table(table_id, table)
+    );
     Ok(())
 }
 
-fn print_roll_result(result: &fatescroll::RollResult, indent: usize) {
+fn print_roll_result(result: &fatescroll_core::RollResult, indent: usize) {
     let pad = "  ".repeat(indent);
     match (result.roll, &result.text) {
         (Some(roll), Some(text)) => {
@@ -347,11 +350,11 @@ fn cmd_search(
     tag: Option<&str>,
     namespace: Option<&str>,
     tags: bool,
-) -> Result<(), fatescroll::Error> {
-    let registry = fatescroll::load_collection(collection)?;
+) -> Result<(), fatescroll_core::Error> {
+    let registry = fatescroll_core::load_collection(collection)?;
 
     if tags {
-        let all_tags = fatescroll::search::collect_tags(&registry);
+        let all_tags = fatescroll_core::search::collect_tags(&registry);
         if all_tags.is_empty() {
             println!("No tags found.");
         } else {
@@ -362,12 +365,12 @@ fn cmd_search(
         return Ok(());
     }
 
-    let results: Vec<(&str, &fatescroll::Table)> = if let Some(name) = name {
-        fatescroll::search::search_by_name(&registry, name)
+    let results: Vec<(&str, &fatescroll_core::Table)> = if let Some(name) = name {
+        fatescroll_core::search::search_by_name(&registry, name)
     } else if let Some(tag) = tag {
-        fatescroll::search::search_by_tag(&registry, tag)
+        fatescroll_core::search::search_by_tag(&registry, tag)
     } else if let Some(ns) = namespace {
-        fatescroll::search::search_by_namespace(&registry, ns)
+        fatescroll_core::search::search_by_namespace(&registry, ns)
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -397,13 +400,13 @@ fn cmd_init(
     distribution: Option<String>,
     name: &str,
     output: Option<PathBuf>,
-) -> Result<(), fatescroll::Error> {
+) -> Result<(), fatescroll_core::Error> {
     let roll_expr = if let Some(expr) = roll {
         expr
     } else if let Some(count) = entries {
         let dist = match distribution.as_deref() {
-            Some("flat") => fatescroll::init::Distribution::Flat,
-            Some("bell") => fatescroll::init::Distribution::Bell,
+            Some("flat") => fatescroll_core::init::Distribution::Flat,
+            Some("bell") => fatescroll_core::init::Distribution::Bell,
             Some(other) => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -422,7 +425,7 @@ fn cmd_init(
             .into());
         }
 
-        if matches!(dist, fatescroll::init::Distribution::Bell) && count < 3 {
+        if matches!(dist, fatescroll_core::init::Distribution::Bell) && count < 3 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "bell curves require at least 3 entries (minimum is 2d2)",
@@ -430,9 +433,9 @@ fn cmd_init(
             .into());
         }
 
-        match fatescroll::init::calculate_distribution(count, dist) {
-            fatescroll::init::DistributionResult::Exact(expr) => expr,
-            fatescroll::init::DistributionResult::Suggestions(suggestions) => {
+        match fatescroll_core::init::calculate_distribution(count, dist) {
+            fatescroll_core::init::DistributionResult::Exact(expr) => expr,
+            fatescroll_core::init::DistributionResult::Suggestions(suggestions) => {
                 eprintln!("No exact match for {count} entries with bell curve.");
                 let mut current_dice = 0;
                 for s in &suggestions {
@@ -461,7 +464,7 @@ fn cmd_init(
         .into());
     };
 
-    let template = fatescroll::init::generate_template(&roll_expr, name)?;
+    let template = fatescroll_core::init::generate_template(&roll_expr, name)?;
 
     if let Some(path) = output {
         if path.exists() {
@@ -484,7 +487,7 @@ fn cmd_import(
     manifest_path: &Path,
     target_dir: &str,
     files: &[PathBuf],
-) -> Result<(), fatescroll::Error> {
+) -> Result<(), fatescroll_core::Error> {
     let collection_dir = manifest_path.parent().unwrap_or(Path::new("."));
     let dest = collection_dir.join(target_dir);
     if !dest.is_dir() {
@@ -503,7 +506,7 @@ fn cmd_import(
     }
 
     println!("Validating collection...");
-    let _registry = fatescroll::load_collection(manifest_path)?;
+    let _registry = fatescroll_core::load_collection(manifest_path)?;
     println!("Collection is valid after import.");
     Ok(())
 }

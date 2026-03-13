@@ -11,7 +11,7 @@ fn fatescroll_bin() -> Command {
 
 fn fixtures_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures")
+        .join("../tests/fixtures")
         .join(name)
 }
 

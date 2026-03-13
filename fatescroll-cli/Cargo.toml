@@ -1,0 +1,17 @@
+[package]
+name = "fatescroll-cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[[bin]]
+name = "fatescroll"
+path = "src/main.rs"
+
+[dependencies]
+fatescroll-core = { path = "../fatescroll-core" }
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+tempfile = "3"

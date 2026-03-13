@@ -1,17 +1,3 @@
-[package]
-name = "fatescroll"
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-
-[dependencies]
-clap = { version = "4", features = ["derive"] }
-diceman = { git = "https://github.com/snits/diceman.git", subdirectory = "crates/diceman", branch = "main" }
-regex = "1"
-serde = { version = "1", features = ["derive"] }
-serde_yaml = "0.9"
-thiserror = "2"
-
-[dev-dependencies]
-cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
-tempfile = "3"
+[workspace]
+members = ["fatescroll-core", "fatescroll-cli"]
+resolver = "3"
