@@ -4,12 +4,37 @@
 use crate::error::Error;
 use diceman::{Expr, Op};
 
+/// Returns all valid digit-dice outcomes as a sorted Vec.
+/// For D66 (sides=6, count=2): generates all combinations where each digit
+/// is 1..=sides, concatenated as decimal digits: [11,12,...,16,21,...,66].
+pub fn digit_dice_values(sides: u32, count: u32) -> Vec<u32> {
+    fn recurse(sides: u32, count: u32, current: u32, out: &mut Vec<u32>) {
+        if count == 0 {
+            out.push(current);
+            return;
+        }
+        for digit in 1..=sides {
+            let place = 10u32.pow(count - 1);
+            recurse(sides, count - 1, current + digit * place, out);
+        }
+    }
+    let mut out = Vec::new();
+    recurse(sides, count, 0, &mut out);
+    out.sort_unstable();
+    out
+}
+
 /// Compute the min and max values of a simple dice expression analytically.
-/// Supports XdY and XdY±Z forms only. Rejects expressions with modifiers
-/// (keep/drop, exploding, reroll) or complex arithmetic (dice+dice, mul/div).
+/// Supports XdY, XdY±Z, and DNN (digit-dice) forms only. Rejects expressions
+/// with modifiers (keep/drop, exploding, reroll) or complex arithmetic
+/// (dice+dice, mul/div).
 pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
     let parsed = diceman::parse(expr)?;
     match parsed {
+        Expr::DigitRoll { sides, count } => {
+            let values = digit_dice_values(sides, count);
+            Ok((*values.first().unwrap(), *values.last().unwrap()))
+        }
         Expr::Roll(roll) => {
             if !roll.modifiers.is_empty() {
                 return Err(unsupported(expr, "dice modifiers"));
@@ -59,15 +84,24 @@ fn unsupported(expr: &str, what: &str) -> Error {
 
 /// Generate a table YAML skeleton from a dice expression.
 /// Each possible value gets its own result entry with empty text.
+/// For digit-dice expressions (D66, D666, etc.), only valid digit-dice
+/// values are emitted — not the full contiguous range.
 pub fn generate_template(roll_expr: &str, name: &str) -> Result<String, Error> {
-    let (min, max) = dice_range(roll_expr)?;
+    let parsed = diceman::parse(roll_expr)?;
+    let values: Vec<u32> = match parsed {
+        Expr::DigitRoll { sides, count } => digit_dice_values(sides, count),
+        _ => {
+            let (min, max) = dice_range(roll_expr)?;
+            (min..=max).collect()
+        }
+    };
     let mut output = String::new();
     output.push_str(&format!("name: {name}\n"));
     output.push_str("type: simple\n");
     output.push_str("tags: []\n");
     output.push_str(&format!("roll: {roll_expr}\n"));
     output.push_str("results:\n");
-    for value in min..=max {
+    for value in values {
         output.push_str(&format!("  - min: {value}\n"));
         output.push_str(&format!("    max: {value}\n"));
         output.push_str("    text: \"\"\n");
@@ -282,5 +316,51 @@ mod tests {
     fn bell_minimum_entries() {
         let result = calculate_distribution(3, Distribution::Bell);
         assert_eq!(result, DistributionResult::Exact("2d2".to_string()));
+    }
+
+    #[test]
+    fn digit_dice_values_d66() {
+        let values = digit_dice_values(6, 2);
+        assert_eq!(values.len(), 36);
+        assert_eq!(values[0], 11);
+        assert_eq!(values[values.len() - 1], 66);
+        assert!(values.contains(&35));
+        assert!(!values.contains(&17));
+    }
+
+    #[test]
+    fn digit_dice_values_d44() {
+        let values = digit_dice_values(4, 2);
+        assert_eq!(values.len(), 16);
+        assert_eq!(values[0], 11);
+        assert_eq!(values[values.len() - 1], 44);
+    }
+
+    #[test]
+    fn digit_dice_values_d666() {
+        let values = digit_dice_values(6, 3);
+        assert_eq!(values.len(), 216);
+        assert_eq!(values[0], 111);
+        assert_eq!(values[values.len() - 1], 666);
+    }
+
+    #[test]
+    fn dice_range_d66() {
+        let (min, max) = dice_range("D66").unwrap();
+        assert_eq!(min, 11);
+        assert_eq!(max, 66);
+    }
+
+    #[test]
+    fn generate_template_d66() {
+        let output = generate_template("D66", "D66 Test").unwrap();
+        assert!(output.contains("name: D66 Test"));
+        assert!(output.contains("roll: D66"));
+        let entry_count = output.matches("  - min:").count();
+        assert_eq!(entry_count, 36);
+        assert!(output.contains("min: 11"));
+        assert!(output.contains("max: 66"));
+        // Must not contain impossible values like 17
+        assert!(!output.contains("min: 17"));
     }
 }
