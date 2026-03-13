@@ -1,5 +1,5 @@
 // ABOUTME: CLI binary for fatescroll random table tool.
-// ABOUTME: Thin wrapper over the fatescroll-core library using clap.
+// ABOUTME: Parses CLI arguments and dispatches to library functions.
 
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
