@@ -9,19 +9,24 @@ fatescroll is a Rust CLI tool for managing and rolling on RPG random tables defi
 ## Build & Test Commands
 
 ```bash
-cargo build                    # Build
-cargo test                     # Run all tests (unit + integration)
-cargo test --lib               # Unit tests only
-cargo test --test cli_integration  # Integration tests only
-cargo test <test_name>         # Run a single test by name
-cargo clippy -- -D warnings    # Lint (must pass clean)
-cargo fmt                      # Auto-format code
-cargo fmt --check              # Check formatting without modifying
+cargo build                          # Build entire workspace
+cargo test                           # Run all tests (all crates)
+cargo test -p fatescroll-core        # Core library tests only
+cargo test -p fatescroll-core --lib  # Core unit tests only
+cargo test -p fatescroll-cli         # CLI + integration tests only
+cargo test <test_name>               # Run a single test by name
+cargo clippy -- -D warnings          # Lint (must pass clean)
+cargo fmt                            # Auto-format code
+cargo fmt --check                    # Check formatting without modifying
 ```
 
-A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `.cargo-husky/hooks/pre-commit`. Never bypass hooks.
+A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `fatescroll-cli/.cargo-husky/hooks/pre-commit`. Never bypass hooks.
 
 ## Architecture
+
+fatescroll is a Cargo workspace with two crates:
+- **`fatescroll-core`** — Library crate with all domain logic (no CLI dependencies). External consumers (e.g., hexwalker) depend on this.
+- **`fatescroll-cli`** — Binary crate providing the `fatescroll` CLI, depends on `fatescroll-core`.
 
 The data flow is: **manifest → discovery → loading → validation → registry → rolling/display**.
 
@@ -46,7 +51,7 @@ The data flow is: **manifest → discovery → loading → validation → regist
 
 In-memory `BTreeMap<String, Table>` keyed by FQID. Reference resolution is relative-first: tries `{caller_namespace}.{ref}` before bare `{ref}`.
 
-### CLI (`main.rs`)
+### CLI (`fatescroll-cli/src/main.rs`)
 
 Thin clap v4 derive-macro wrapper. Subcommands: `validate`, `roll`, `search`, `show`, `init`, `import`. Most resolve a collection via `resolve_collection()` which accepts a manifest path, directory, or falls back to CWD. `init` is standalone (no collection needed).
 
@@ -57,15 +62,15 @@ Top-level `Error` enum wraps `ValidationError`, `LoadError`, `RollError`, `serde
 ## Key Dependencies
 
 - **`diceman`** — Dice expression parser and roller (git dependency from `github.com/snits/diceman`). Key API: `diceman::parse()`, `diceman::roll()`, `diceman::simulate_seeded(expr, iterations, seed)` returns `SimResult { min, max }`.
-- **`clap` v4** — CLI framework using derive macros
+- **`clap` v4** — CLI framework using derive macros (fatescroll-cli only)
 - **`serde` / `serde_yaml`** — YAML deserialization
 - **`thiserror`** — Error type derive macros
 
 ## Testing Patterns
 
-- **Unit tests**: inline `#[cfg(test)] mod tests` in each source file, using `fixtures_path()` helper that resolves to `tests/fixtures/`
-- **Integration tests**: `tests/cli_integration.rs` runs the compiled binary via `Command::new(env!("CARGO_BIN_EXE_fatescroll"))`. Uses `fixtures_path()` for fixture collections and `tempfile::TempDir` for write tests.
-- **Fixtures**: `tests/fixtures/valid-collection/` is the primary fixture with 11 tables. Other fixtures test specific scenarios (invalid, id-mismatch, file-entries, files-only).
+- **Unit tests**: inline `#[cfg(test)] mod tests` in each `fatescroll-core` source file, using `fixtures_path()` helper that resolves to `tests/fixtures/` at the workspace root.
+- **Integration tests**: `fatescroll-cli/tests/cli_integration.rs` runs the compiled binary via `Command::new(env!("CARGO_BIN_EXE_fatescroll"))`. Uses `fixtures_path()` for fixture collections and `tempfile::TempDir` for write tests.
+- **Fixtures**: `tests/fixtures/valid-collection/` is the primary fixture with 11 tables. Other fixtures test specific scenarios (invalid, id-mismatch, file-entries, files-only). Fixtures live at the workspace root and are shared by both crates.
 
 ## Conventions
 
@@ -78,6 +83,6 @@ Top-level `Error` enum wraps `ValidationError`, `LoadError`, `RollError`, `serde
 ## PROJECT SCALE CONTEXT
 
 - **Users**: Single developer (Jerry), personal CLI tool for tabletop RPG prep
-- **Codebase**: Small (~2K lines Rust), single binary crate with library
+- **Codebase**: Small (~2K lines Rust), Cargo workspace with library + binary crate
 - **Complexity preference**: Simple, pragmatic, YAGNI
 - **Process**: TDD mandatory, frequent commits, beads for issue tracking
