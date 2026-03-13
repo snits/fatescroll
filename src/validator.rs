@@ -4,7 +4,9 @@
 use crate::error::ValidationError;
 use crate::models::{ResultEntry, Table};
 use crate::registry::Registry;
+use diceman::Expr;
 use regex::Regex;
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 static NAMESPACE_SEGMENT: LazyLock<Regex> =
@@ -56,89 +58,24 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             ..
         } => {
             // Validate dice expression is parseable
-            diceman::parse(roll).map_err(|e| ValidationError::InvalidDiceExpression {
-                table: name.clone(),
-                expr: roll.clone(),
-                reason: e.to_string(),
-            })?;
+            let parsed =
+                diceman::parse(roll).map_err(|e| ValidationError::InvalidDiceExpression {
+                    table: name.clone(),
+                    expr: roll.clone(),
+                    reason: e.to_string(),
+                })?;
 
             // Validate each result entry
             for entry in results {
                 validate_result_entry(entry, name)?;
             }
 
-            // Get dice expression range via simulation
-            let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
-                ValidationError::InvalidDiceExpression {
-                    table: name.clone(),
-                    expr: roll.clone(),
-                    reason: e.to_string(),
-                }
-            })?;
-            if sim.min < 0 || sim.max < 0 {
-                return Err(ValidationError::InvalidDiceExpression {
-                    table: name.clone(),
-                    expr: roll.clone(),
-                    reason: format!(
-                        "dice range [{}, {}] includes negative values",
-                        sim.min, sim.max
-                    ),
-                });
+            // Dispatch to digit-dice or regular coverage checking
+            if let Expr::DigitRoll { sides, count } = parsed {
+                validate_digit_dice_coverage(name, roll, results, sides, count)
+            } else {
+                validate_contiguous_coverage(name, roll, results)
             }
-            let dice_min = sim.min as u32;
-            let dice_max = sim.max as u32;
-
-            // Pre-check: every entry must fall within dice range
-            for entry in results {
-                if entry.min < dice_min || entry.max > dice_max {
-                    return Err(ValidationError::EntryOutOfRange {
-                        table: name.clone(),
-                        entry_min: entry.min,
-                        entry_max: entry.max,
-                        dice_min,
-                        dice_max,
-                    });
-                }
-            }
-
-            // Check range coverage: every value in [dice_min, dice_max]
-            // must be covered exactly once
-            let mut coverage = vec![0u32; (dice_max - dice_min + 1) as usize];
-            for entry in results {
-                let start = entry.min.saturating_sub(dice_min) as usize;
-                let end = entry.max.saturating_sub(dice_min) as usize;
-                for i in start..=end.min(coverage.len() - 1) {
-                    coverage[i] += 1;
-                }
-            }
-
-            let missing: Vec<u32> = coverage
-                .iter()
-                .enumerate()
-                .filter(|(_, count)| **count == 0)
-                .map(|(i, _)| i as u32 + dice_min)
-                .collect();
-            if !missing.is_empty() {
-                return Err(ValidationError::RangeGap {
-                    table: name.clone(),
-                    missing,
-                });
-            }
-
-            let overlapping: Vec<u32> = coverage
-                .iter()
-                .enumerate()
-                .filter(|(_, count)| **count > 1)
-                .map(|(i, _)| i as u32 + dice_min)
-                .collect();
-            if !overlapping.is_empty() {
-                return Err(ValidationError::RangeOverlap {
-                    table: name.clone(),
-                    overlapping,
-                });
-            }
-
-            Ok(())
         }
         Table::Compound { .. } => {
             // Per-type validation for compound tables is minimal.
@@ -146,6 +83,157 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             Ok(())
         }
     }
+}
+
+/// Check coverage for a digit-dice expression (D66, D666, etc.).
+/// Valid values are non-contiguous (e.g., 11-16, 21-26, ..., 61-66 for D66).
+/// Every valid value must be covered exactly once; entries must not fall outside the valid set.
+fn validate_digit_dice_coverage(
+    name: &str,
+    _roll: &str,
+    results: &[ResultEntry],
+    sides: u32,
+    count: u32,
+) -> Result<(), ValidationError> {
+    let valid_values: HashSet<u32> = crate::init::digit_dice_values(sides, count)
+        .into_iter()
+        .collect();
+    let dice_min = *valid_values.iter().min().unwrap();
+    let dice_max = *valid_values.iter().max().unwrap();
+
+    // Pre-check: every entry must only reference valid digit-dice values
+    for entry in results {
+        for v in entry.min..=entry.max {
+            if !valid_values.contains(&v) {
+                return Err(ValidationError::EntryOutOfRange {
+                    table: name.to_string(),
+                    entry_min: entry.min,
+                    entry_max: entry.max,
+                    dice_min,
+                    dice_max,
+                });
+            }
+        }
+    }
+
+    // Build a coverage count per valid value
+    let mut coverage: std::collections::HashMap<u32, u32> =
+        valid_values.iter().map(|&v| (v, 0)).collect();
+    for entry in results {
+        for v in entry.min..=entry.max {
+            if let Some(count) = coverage.get_mut(&v) {
+                *count += 1;
+            }
+        }
+    }
+
+    let mut missing: Vec<u32> = coverage
+        .iter()
+        .filter(|(_, c)| **c == 0)
+        .map(|(&v, _)| v)
+        .collect();
+    missing.sort_unstable();
+    if !missing.is_empty() {
+        return Err(ValidationError::RangeGap {
+            table: name.to_string(),
+            missing,
+        });
+    }
+
+    let mut overlapping: Vec<u32> = coverage
+        .iter()
+        .filter(|(_, c)| **c > 1)
+        .map(|(&v, _)| v)
+        .collect();
+    overlapping.sort_unstable();
+    if !overlapping.is_empty() {
+        return Err(ValidationError::RangeOverlap {
+            table: name.to_string(),
+            overlapping,
+        });
+    }
+
+    Ok(())
+}
+
+/// Check coverage for a contiguous dice expression (1d6, 2d6, 1d8+1, etc.).
+/// Every integer value in [dice_min, dice_max] must be covered exactly once.
+fn validate_contiguous_coverage(
+    name: &str,
+    roll: &str,
+    results: &[ResultEntry],
+) -> Result<(), ValidationError> {
+    let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
+        ValidationError::InvalidDiceExpression {
+            table: name.to_string(),
+            expr: roll.to_string(),
+            reason: e.to_string(),
+        }
+    })?;
+    if sim.min < 0 || sim.max < 0 {
+        return Err(ValidationError::InvalidDiceExpression {
+            table: name.to_string(),
+            expr: roll.to_string(),
+            reason: format!(
+                "dice range [{}, {}] includes negative values",
+                sim.min, sim.max
+            ),
+        });
+    }
+    let dice_min = sim.min as u32;
+    let dice_max = sim.max as u32;
+
+    // Pre-check: every entry must fall within dice range
+    for entry in results {
+        if entry.min < dice_min || entry.max > dice_max {
+            return Err(ValidationError::EntryOutOfRange {
+                table: name.to_string(),
+                entry_min: entry.min,
+                entry_max: entry.max,
+                dice_min,
+                dice_max,
+            });
+        }
+    }
+
+    // Check range coverage: every value in [dice_min, dice_max]
+    // must be covered exactly once
+    let mut coverage = vec![0u32; (dice_max - dice_min + 1) as usize];
+    for entry in results {
+        let start = entry.min.saturating_sub(dice_min) as usize;
+        let end = entry.max.saturating_sub(dice_min) as usize;
+        for i in start..=end.min(coverage.len() - 1) {
+            coverage[i] += 1;
+        }
+    }
+
+    let missing: Vec<u32> = coverage
+        .iter()
+        .enumerate()
+        .filter(|(_, count)| **count == 0)
+        .map(|(i, _)| i as u32 + dice_min)
+        .collect();
+    if !missing.is_empty() {
+        return Err(ValidationError::RangeGap {
+            table: name.to_string(),
+            missing,
+        });
+    }
+
+    let overlapping: Vec<u32> = coverage
+        .iter()
+        .enumerate()
+        .filter(|(_, count)| **count > 1)
+        .map(|(i, _)| i as u32 + dice_min)
+        .collect();
+    if !overlapping.is_empty() {
+        return Err(ValidationError::RangeOverlap {
+            table: name.to_string(),
+            overlapping,
+        });
+    }
+
+    Ok(())
 }
 
 /// Validate that all chain and compound table references resolve in the registry.
@@ -490,6 +578,91 @@ mod tests {
         };
         let err = validate_table(&table).unwrap_err();
         assert!(matches!(err, ValidationError::InvalidDiceExpression { .. }));
+    }
+
+    #[test]
+    fn valid_d66_table_full_coverage() {
+        // Build all 36 valid D66 values as individual entries (min==max each)
+        let values = crate::init::digit_dice_values(6, 2);
+        let results: Vec<ResultEntry> = values
+            .iter()
+            .map(|&v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("Result {v}")),
+                chain: None,
+            })
+            .collect();
+        let table = Table::Simple {
+            id: "d66-full".into(),
+            name: "D66 Full".into(),
+            tags: vec![],
+            roll: "D66".into(),
+            results,
+        };
+        assert!(validate_table(&table).is_ok());
+    }
+
+    #[test]
+    fn d66_table_with_gap() {
+        // Build all 36 valid D66 values except 35
+        let values = crate::init::digit_dice_values(6, 2);
+        let results: Vec<ResultEntry> = values
+            .iter()
+            .filter(|&&v| v != 35)
+            .map(|&v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("Result {v}")),
+                chain: None,
+            })
+            .collect();
+        let table = Table::Simple {
+            id: "d66-gap".into(),
+            name: "D66 Gap".into(),
+            tags: vec![],
+            roll: "D66".into(),
+            results,
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::RangeGap { .. }),
+            "Expected RangeGap, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn d66_table_entry_outside_valid_range() {
+        // Include an entry for value 17 which is not a valid D66 outcome
+        let values = crate::init::digit_dice_values(6, 2);
+        let mut results: Vec<ResultEntry> = values
+            .iter()
+            .map(|&v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("Result {v}")),
+                chain: None,
+            })
+            .collect();
+        // Add an invalid entry for 17
+        results.push(ResultEntry {
+            min: 17,
+            max: 17,
+            text: Some("Invalid".into()),
+            chain: None,
+        });
+        let table = Table::Simple {
+            id: "d66-invalid".into(),
+            name: "D66 Invalid".into(),
+            tags: vec![],
+            roll: "D66".into(),
+            results,
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::EntryOutOfRange { .. }),
+            "Expected EntryOutOfRange, got: {err:?}"
+        );
     }
 
     #[test]
