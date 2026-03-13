@@ -729,3 +729,62 @@ fn init_requires_roll_or_entries() {
         .expect("failed to run fatescroll");
     assert!(!output.status.success());
 }
+
+#[test]
+fn roll_on_d66_table() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.traveller.d66-sample",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("D66 Sample Table"),
+        "Expected table name in output, got: {stdout}"
+    );
+    // The output should contain a valid D66 result (e.g., "Entry 11" through "Entry 66")
+    // where both digits are 1-6
+    let has_valid_entry = (1u32..=6)
+        .flat_map(|d1| (1u32..=6).map(move |d2| d1 * 10 + d2))
+        .any(|v| stdout.contains(&format!("Entry {v}")));
+    assert!(
+        has_valid_entry,
+        "Expected a valid D66 entry in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn init_d66_template() {
+    let output = fatescroll_bin()
+        .args(["init", "--roll", "D66", "--name", "Test D66"])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("roll: D66"),
+        "Expected 'roll: D66' in output, got: {stdout}"
+    );
+    assert_eq!(
+        stdout.matches("  - min:").count(),
+        36,
+        "Expected exactly 36 entries, got output: {stdout}"
+    );
+    assert!(
+        !stdout.contains("min: 17"),
+        "Output should not contain impossible D66 value 17, got: {stdout}"
+    );
+}

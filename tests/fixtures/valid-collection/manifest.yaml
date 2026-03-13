@@ -10,3 +10,5 @@ directories:
     namespace: test.encounters
   - path: npc
     namespace: test.npc
+  - path: traveller
+    namespace: test.traveller

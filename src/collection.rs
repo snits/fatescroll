@@ -184,7 +184,7 @@ mod tests {
         let manifest_path = fixtures_path("valid-collection/manifest.yaml");
         let (_manifest, files, errors) = discover_collection_files(&manifest_path).unwrap();
         assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
-        assert_eq!(files.len(), 11, "expected 11 files, got {}", files.len());
+        assert_eq!(files.len(), 12, "expected 12 files, got {}", files.len());
         for f in &files {
             assert!(!f.stem.is_empty());
             assert!(!f.namespace.is_empty());

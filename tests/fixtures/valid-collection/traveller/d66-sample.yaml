@@ -1,0 +1,116 @@
+id: d66-sample
+name: D66 Sample Table
+type: simple
+tags:
+  - traveller
+  - d66
+roll: D66
+results:
+  - min: 11
+    max: 11
+    text: "Entry 11"
+  - min: 12
+    max: 12
+    text: "Entry 12"
+  - min: 13
+    max: 13
+    text: "Entry 13"
+  - min: 14
+    max: 14
+    text: "Entry 14"
+  - min: 15
+    max: 15
+    text: "Entry 15"
+  - min: 16
+    max: 16
+    text: "Entry 16"
+  - min: 21
+    max: 21
+    text: "Entry 21"
+  - min: 22
+    max: 22
+    text: "Entry 22"
+  - min: 23
+    max: 23
+    text: "Entry 23"
+  - min: 24
+    max: 24
+    text: "Entry 24"
+  - min: 25
+    max: 25
+    text: "Entry 25"
+  - min: 26
+    max: 26
+    text: "Entry 26"
+  - min: 31
+    max: 31
+    text: "Entry 31"
+  - min: 32
+    max: 32
+    text: "Entry 32"
+  - min: 33
+    max: 33
+    text: "Entry 33"
+  - min: 34
+    max: 34
+    text: "Entry 34"
+  - min: 35
+    max: 35
+    text: "Entry 35"
+  - min: 36
+    max: 36
+    text: "Entry 36"
+  - min: 41
+    max: 41
+    text: "Entry 41"
+  - min: 42
+    max: 42
+    text: "Entry 42"
+  - min: 43
+    max: 43
+    text: "Entry 43"
+  - min: 44
+    max: 44
+    text: "Entry 44"
+  - min: 45
+    max: 45
+    text: "Entry 45"
+  - min: 46
+    max: 46
+    text: "Entry 46"
+  - min: 51
+    max: 51
+    text: "Entry 51"
+  - min: 52
+    max: 52
+    text: "Entry 52"
+  - min: 53
+    max: 53
+    text: "Entry 53"
+  - min: 54
+    max: 54
+    text: "Entry 54"
+  - min: 55
+    max: 55
+    text: "Entry 55"
+  - min: 56
+    max: 56
+    text: "Entry 56"
+  - min: 61
+    max: 61
+    text: "Entry 61"
+  - min: 62
+    max: 62
+    text: "Entry 62"
+  - min: 63
+    max: 63
+    text: "Entry 63"
+  - min: 64
+    max: 64
+    text: "Entry 64"
+  - min: 65
+    max: 65
+    text: "Entry 65"
+  - min: 66
+    max: 66
+    text: "Entry 66"
