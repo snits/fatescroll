@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn validate_refs_valid_collection() {
         let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/valid-collection/manifest.yaml");
+            .join("../tests/fixtures/valid-collection/manifest.yaml");
         let registry = crate::loader::load_collection(&manifest_path).unwrap();
         assert!(validate_references(&registry).is_ok());
     }

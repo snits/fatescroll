@@ -1,0 +1,15 @@
+[package]
+name = "fatescroll-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+diceman = { git = "https://github.com/snits/diceman.git", subdirectory = "crates/diceman", branch = "main" }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
