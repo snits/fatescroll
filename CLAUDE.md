@@ -20,7 +20,7 @@ cargo fmt                            # Auto-format code
 cargo fmt --check                    # Check formatting without modifying
 ```
 
-A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `fatescroll-cli/.cargo-husky/hooks/pre-commit`. Never bypass hooks.
+A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `.cargo-husky/hooks/pre-commit` at the workspace root. Never bypass hooks.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ The data flow is: **manifest → discovery → loading → validation → regist
 
 ### Registry (`registry.rs`)
 
-In-memory `BTreeMap<String, Table>` keyed by FQID. Reference resolution is relative-first: tries `{caller_namespace}.{ref}` before bare `{ref}`.
+In-memory `HashMap<String, Table>` keyed by FQID. Reference resolution is relative-first: tries `{caller_namespace}.{ref}` before bare `{ref}`.
 
 ### CLI (`fatescroll-cli/src/main.rs`)
 
