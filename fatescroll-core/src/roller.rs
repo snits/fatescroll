@@ -61,7 +61,7 @@ fn roll_recursive(
         .map(|(ns, _)| ns)
         .unwrap_or("");
 
-    match table.clone() {
+    match table {
         Table::Simple {
             name,
             roll: roll_expr,
@@ -71,7 +71,7 @@ fn roll_recursive(
             let (roll_u32, entry) = {
                 let mut attempts = 0;
                 loop {
-                    let dice_result = diceman::roll_with_rng(&roll_expr, rng).map_err(|e| {
+                    let dice_result = diceman::roll_with_rng(roll_expr, rng).map_err(|e| {
                         RollError::DiceEvaluation {
                             table: name.clone(),
                             expr: roll_expr.clone(),
@@ -127,7 +127,7 @@ fn roll_recursive(
             }
 
             Ok(RollResult {
-                table_name: name,
+                table_name: name.clone(),
                 roll: Some(roll_u32),
                 text,
                 children,
@@ -139,13 +139,13 @@ fn roll_recursive(
             ..
         } => {
             let mut children = Vec::new();
-            for table_ref in &sub_tables {
+            for table_ref in sub_tables {
                 let child = roll_recursive(registry, table_ref, namespace, rng, depth + 1, &[])?;
                 children.push(child);
             }
 
             Ok(RollResult {
-                table_name: name,
+                table_name: name.clone(),
                 roll: None,
                 text: None,
                 children,
