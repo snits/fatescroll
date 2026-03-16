@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
+const TEST_MANIFEST_YAML: &str = "name: Test\nversion: \"1.0\"\nnamespace: test\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: tables\n    namespace: test.tables\n";
+
 fn fatescroll_bin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fatescroll"))
 }
@@ -759,6 +761,220 @@ fn roll_on_d66_table() {
     assert!(
         has_valid_entry,
         "Expected a valid D66 entry in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn import_happy_path() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(dir.path().join("manifest.yaml"), TEST_MANIFEST_YAML).unwrap();
+
+    let src_dir = TempDir::new().unwrap();
+    std::fs::write(
+        src_dir.path().join("my-table.yaml"),
+        "id: my-table\nname: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let src_file = src_dir.path().join("my-table.yaml");
+    let manifest_path = dir.path().join("manifest.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "import",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+            "--target-dir",
+            "tables",
+            &src_file.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Imported:"),
+        "Expected 'Imported:' in stdout, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Collection is valid after import."),
+        "Expected validation message in stdout, got: {stdout}"
+    );
+    assert!(
+        tables_dir.join("my-table.yaml").exists(),
+        "Expected file to exist in target dir"
+    );
+}
+
+#[test]
+fn import_creates_target_directory() {
+    let dir = TempDir::new().unwrap();
+
+    std::fs::write(dir.path().join("manifest.yaml"), TEST_MANIFEST_YAML).unwrap();
+
+    let src_dir = TempDir::new().unwrap();
+    std::fs::write(
+        src_dir.path().join("my-table.yaml"),
+        "id: my-table\nname: My Table\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let src_file = src_dir.path().join("my-table.yaml");
+    let manifest_path = dir.path().join("manifest.yaml");
+    let expected_dest = dir.path().join("tables").join("my-table.yaml");
+
+    assert!(
+        !dir.path().join("tables").exists(),
+        "tables dir should not exist yet"
+    );
+
+    let output = fatescroll_bin()
+        .args([
+            "import",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+            "--target-dir",
+            "tables",
+            &src_file.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        expected_dest.exists(),
+        "Expected file to be created in new target dir"
+    );
+}
+
+#[test]
+fn import_nonexistent_file_fails() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(dir.path().join("manifest.yaml"), TEST_MANIFEST_YAML).unwrap();
+
+    let manifest_path = dir.path().join("manifest.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "import",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+            "--target-dir",
+            "tables",
+            "/nonexistent/path/ghost-table.yaml",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ghost-table.yaml") || stderr.contains("No such file"),
+        "Expected filename or 'No such file' in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn import_invalid_table_fails_validation() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(dir.path().join("manifest.yaml"), TEST_MANIFEST_YAML).unwrap();
+
+    let src_dir = TempDir::new().unwrap();
+    std::fs::write(
+        src_dir.path().join("bad-table.yaml"),
+        "id: bad-table\nname: Bad Table\ntype: simple\ntags: []\nroll: NOTADICE\nresults:\n  - min: 1\n    max: 4\n    text: Something\n",
+    ).unwrap();
+
+    let src_file = src_dir.path().join("bad-table.yaml");
+    let manifest_path = dir.path().join("manifest.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "import",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+            "--target-dir",
+            "tables",
+            &src_file.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        !output.status.success(),
+        "Expected failure due to invalid table, stdout: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        tables_dir.join("bad-table.yaml").exists(),
+        "File should have been copied before validation failed"
+    );
+}
+
+#[test]
+fn import_multiple_files() {
+    let dir = TempDir::new().unwrap();
+    let tables_dir = dir.path().join("tables");
+    std::fs::create_dir_all(&tables_dir).unwrap();
+
+    std::fs::write(dir.path().join("manifest.yaml"), TEST_MANIFEST_YAML).unwrap();
+
+    let src_dir = TempDir::new().unwrap();
+    std::fs::write(
+        src_dir.path().join("table-one.yaml"),
+        "id: table-one\nname: Table One\ntype: simple\ntags: []\nroll: 1d4\nresults:\n  - min: 1\n    max: 4\n    text: Alpha\n",
+    ).unwrap();
+    std::fs::write(
+        src_dir.path().join("table-two.yaml"),
+        "id: table-two\nname: Table Two\ntype: simple\ntags: []\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: Beta\n",
+    ).unwrap();
+
+    let src_file_one = src_dir.path().join("table-one.yaml");
+    let src_file_two = src_dir.path().join("table-two.yaml");
+    let manifest_path = dir.path().join("manifest.yaml");
+    let output = fatescroll_bin()
+        .args([
+            "import",
+            "--collection",
+            &manifest_path.to_string_lossy(),
+            "--target-dir",
+            "tables",
+            &src_file_one.to_string_lossy(),
+            &src_file_two.to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Collection is valid after import."),
+        "Expected validation message in stdout, got: {stdout}"
+    );
+    assert!(
+        tables_dir.join("table-one.yaml").exists(),
+        "Expected table-one.yaml in target dir"
+    );
+    assert!(
+        tables_dir.join("table-two.yaml").exists(),
+        "Expected table-two.yaml in target dir"
     );
 }
 
