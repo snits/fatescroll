@@ -1,7 +1,7 @@
 // ABOUTME: Generates table YAML skeletons from dice expressions or entry counts.
 // ABOUTME: Supports explicit, flat, and bell curve distribution modes.
 
-use crate::error::Error;
+use crate::error::{Error, ValidationError};
 use diceman::{Expr, Op};
 
 /// Returns all valid digit-dice outcomes as a sorted Vec.
@@ -62,11 +62,12 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
                 _ => return Err(unsupported(expr, "operator (only +/- supported)")),
             };
             if min < 0 || max < 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("dice expression '{expr}' produces negative values"),
-                )
-                .into());
+                return Err(Error::Validation(
+                    ValidationError::UnsupportedDiceExpression {
+                        expr: expr.to_string(),
+                        reason: "produces negative values".to_string(),
+                    },
+                ));
             }
             Ok((min as u32, max as u32))
         }
@@ -75,11 +76,10 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
 }
 
 fn unsupported(expr: &str, what: &str) -> Error {
-    std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        format!("Unsupported dice expression '{expr}': {what}"),
-    )
-    .into()
+    Error::Validation(ValidationError::UnsupportedDiceExpression {
+        expr: expr.to_string(),
+        reason: what.to_string(),
+    })
 }
 
 /// Generate a table YAML skeleton from a dice expression.
@@ -213,7 +213,7 @@ mod tests {
     fn dice_range_rejects_keep_modifier() {
         let err = dice_range("4d6kh3").unwrap_err();
         assert!(
-            err.to_string().contains("Unsupported"),
+            err.to_string().contains("unsupported"),
             "Expected unsupported error, got: {err}"
         );
     }
@@ -222,7 +222,7 @@ mod tests {
     fn dice_range_rejects_exploding() {
         let err = dice_range("1d6!").unwrap_err();
         assert!(
-            err.to_string().contains("Unsupported"),
+            err.to_string().contains("unsupported"),
             "Expected unsupported error, got: {err}"
         );
     }
@@ -231,7 +231,7 @@ mod tests {
     fn dice_range_rejects_dice_plus_dice() {
         let err = dice_range("1d6+1d4").unwrap_err();
         assert!(
-            err.to_string().contains("Unsupported"),
+            err.to_string().contains("unsupported"),
             "Expected unsupported error, got: {err}"
         );
     }
@@ -240,7 +240,7 @@ mod tests {
     fn dice_range_rejects_multiplication() {
         let err = dice_range("1d6*2").unwrap_err();
         assert!(
-            err.to_string().contains("Unsupported"),
+            err.to_string().contains("unsupported"),
             "Expected unsupported error, got: {err}"
         );
     }

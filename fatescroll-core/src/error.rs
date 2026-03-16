@@ -57,6 +57,9 @@ pub enum ValidationError {
         reason: String,
     },
 
+    #[error("unsupported dice expression '{expr}': {reason}")]
+    UnsupportedDiceExpression { expr: String, reason: String },
+
     #[error("invalid namespace '{namespace}': {reason}")]
     InvalidNamespace { namespace: String, reason: String },
 
