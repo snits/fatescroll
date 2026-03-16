@@ -83,7 +83,7 @@ fn digit_count(n: u32) -> usize {
     if n == 0 {
         return 1;
     }
-    (n as f64).log10().floor() as usize + 1
+    n.ilog10() as usize + 1
 }
 
 #[cfg(test)]
