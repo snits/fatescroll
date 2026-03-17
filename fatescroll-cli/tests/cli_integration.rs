@@ -1004,3 +1004,95 @@ fn init_d66_template() {
         "Output should not contain impossible D66 value 17, got: {stdout}"
     );
 }
+
+#[test]
+fn search_by_name() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--name",
+            "Wilderness",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Wilderness Terrain"),
+        "Expected 'Wilderness Terrain' in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Wilderness Encounter"),
+        "Expected 'Wilderness Encounter' in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn search_by_name_no_results() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--name",
+            "ZZZZNONEXISTENT",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No tables found."),
+        "Expected 'No tables found.' in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn search_by_namespace() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--namespace",
+            "test.npc",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("NPC Occupation"),
+        "Expected 'NPC Occupation' in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("NPC Disposition"),
+        "Expected 'NPC Disposition' in output, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Quick NPC Generator"),
+        "Expected 'Quick NPC Generator' in output, got: {stdout}"
+    );
+}
+
+#[test]
+fn search_by_namespace_no_results() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--namespace",
+            "nonexistent",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("No tables found."),
+        "Expected 'No tables found.' in output, got: {stdout}"
+    );
+}
