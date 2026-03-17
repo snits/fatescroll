@@ -172,12 +172,7 @@ pub fn discover_collection_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn fixtures_path(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests/fixtures")
-            .join(name)
-    }
+    use crate::test_utils::fixtures_path;
 
     #[test]
     fn discovers_all_files_in_valid_collection() {

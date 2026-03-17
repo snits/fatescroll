@@ -86,13 +86,8 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::fixtures_path;
     use std::path::PathBuf;
-
-    fn fixtures_path(name: &str) -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests/fixtures")
-            .join(name)
-    }
 
     #[test]
     fn load_valid_collection() {

@@ -14,6 +14,9 @@ pub mod roller;
 pub mod search;
 pub mod validator;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 use std::path::Path;
 
 pub use error::Error;
