@@ -8,3 +8,4 @@
 
 /target
 session-handoff.md
+.devcontainer/local.env
