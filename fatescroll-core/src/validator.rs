@@ -95,7 +95,7 @@ fn validate_digit_dice_coverage(
     sides: u32,
     count: u32,
 ) -> Result<(), ValidationError> {
-    let valid_values: HashSet<u32> = crate::init::digit_dice_values(sides, count)
+    let valid_values: HashSet<u32> = crate::dice::digit_dice_values(sides, count)
         .into_iter()
         .collect();
     let dice_min = *valid_values.iter().min().unwrap();
@@ -583,7 +583,7 @@ mod tests {
     #[test]
     fn valid_d66_table_full_coverage() {
         // Build all 36 valid D66 values as individual entries (min==max each)
-        let values = crate::init::digit_dice_values(6, 2);
+        let values = crate::dice::digit_dice_values(6, 2);
         let results: Vec<ResultEntry> = values
             .iter()
             .map(|&v| ResultEntry {
@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn d66_table_with_gap() {
         // Build all 36 valid D66 values except 35
-        let values = crate::init::digit_dice_values(6, 2);
+        let values = crate::dice::digit_dice_values(6, 2);
         let results: Vec<ResultEntry> = values
             .iter()
             .filter(|&&v| v != 35)
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn d66_table_entry_outside_valid_range() {
         // Include an entry for value 17 which is not a valid D66 outcome
-        let values = crate::init::digit_dice_values(6, 2);
+        let values = crate::dice::digit_dice_values(6, 2);
         let mut results: Vec<ResultEntry> = values
             .iter()
             .map(|&v| ResultEntry {
