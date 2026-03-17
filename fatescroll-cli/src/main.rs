@@ -310,12 +310,12 @@ fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Er
 
 fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
-    let table =
-        registry
-            .get(table_id)
-            .ok_or_else(|| fatescroll_core::error::RollError::TableNotFound {
-                id: table_id.to_string(),
-            })?;
+    let table = registry.get(table_id).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("table not found: '{table_id}'"),
+        )
+    })?;
     print!(
         "{}",
         fatescroll_core::display::format_table(table_id, table)
