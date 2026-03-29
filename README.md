@@ -1,6 +1,6 @@
 # fatescroll
 
-RPG random table manager and roller.
+A structured randomness engine for creative and evaluative work.
 
 ## Overview
 

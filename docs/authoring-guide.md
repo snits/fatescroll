@@ -1,6 +1,6 @@
 # Authoring Guide
 
-This guide covers how to create table collections for fatescroll, an RPG random table manager. If you are looking for CLI usage instructions, see the project README. This document is for people who want to author their own tables.
+This guide covers how to create table collections for fatescroll, a structured randomness engine. If you are looking for CLI usage instructions, see the project README. This document is for people who want to author their own tables.
 
 ## Collections
 
