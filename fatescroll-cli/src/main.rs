@@ -9,7 +9,7 @@ use std::process;
 #[command(
     name = "fatescroll",
     version,
-    about = "RPG random table manager and roller"
+    about = "A structured randomness engine for creative and evaluative work"
 )]
 struct Cli {
     #[command(subcommand)]
