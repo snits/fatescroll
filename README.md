@@ -79,6 +79,24 @@ $ fatescroll roll --collection my-collection my.tavern.tavern-events
 Tavern Events (rolled 3): Two drunken patrons start a fistfight
 ```
 
+## Beyond RPGs
+
+fatescroll works anywhere you want structured randomness — not just dungeon tables.
+Here's a compound table that randomizes code review prompts to keep reviews from
+going stale:
+
+```
+$ fatescroll roll --collection reviews review.code-review-prompt
+Code Review Prompt
+  Angle (rolled 3): State mutation and side effects
+  Blind Spot (rolled 1): What would you change if you had to debug this at 3am?
+```
+
+The same pattern applies to retrospective formats, interview questions, writing
+prompts, brainstorming constraints — any domain where rotating your lens helps.
+
+See [docs/use-cases.md](docs/use-cases.md) for more worked examples.
+
 ## CLI Usage
 
 ### validate
@@ -134,6 +152,11 @@ Collection is valid after import.
 
 See [docs/authoring-guide.md](docs/authoring-guide.md) for details on writing
 tables, chaining, compound tables, and dice expressions.
+
+## See Also
+
+fatescroll is stateless — it rolls with replacement, so every result is independent.
+For stateful draws without replacement (deck-style), see [deckbox](https://github.com/snits/deckbox) — a complementary tool.
 
 ## License
 
