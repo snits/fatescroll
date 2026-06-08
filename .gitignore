@@ -8,8 +8,11 @@
 
 /target
 session-handoff.md
-.devcontainer/local.env
+.devcontainer
 
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
-/.scratchpad/
+.beads
+.claude
+.worktrees
+.scratchpad
