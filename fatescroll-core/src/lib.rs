@@ -20,6 +20,7 @@ pub(crate) mod test_utils;
 use std::path::Path;
 
 pub use error::Error;
+pub use loader::{load_table, load_table_str};
 pub use models::{RollResult, Table};
 pub use registry::Registry;
 
