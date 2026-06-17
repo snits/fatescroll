@@ -83,6 +83,34 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
     }
 }
 
+/// Parse and validate a single table from a YAML string.
+///
+/// Validates the table's internal consistency (dice expression, range
+/// coverage, entry bounds) via [`validate_table`]. Does NOT resolve chain or
+/// compound references — those require a populated [`Registry`]; check them
+/// with [`crate::validator::validate_references`] after registering the table.
+///
+/// The YAML must include the `id` field. (Files emitted by `init` omit `id`
+/// and rely on the manifest loader deriving it from the filename; load those
+/// via [`load_collection`], not this function.)
+pub fn load_table_str(yaml: &str) -> Result<Table, Error> {
+    let table: Table = serde_yaml::from_str(yaml)?;
+    validate_table(&table)?;
+    Ok(table)
+}
+
+/// Read, parse, and validate a single table from a YAML file.
+///
+/// Same validation scope as [`load_table_str`]: internal consistency only,
+/// chain/compound references left unresolved.
+pub fn load_table(path: &Path) -> Result<Table, Error> {
+    let contents = std::fs::read_to_string(path).map_err(|e| LoadError::FileRead {
+        path: path.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+    load_table_str(&contents)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,5 +177,137 @@ mod tests {
         let registry = load_collection(&manifest_path).unwrap();
         let table = registry.get("test.terrain.wilderness").unwrap();
         assert_eq!(table.name(), "Wilderness Terrain");
+    }
+
+    #[test]
+    fn load_table_str_valid_simple() {
+        let yaml = r#"
+type: simple
+id: goblins
+name: Goblins
+roll: 1d6
+results:
+  - min: 1
+    max: 3
+    text: Few
+  - min: 4
+    max: 6
+    text: Many
+"#;
+        let table = load_table_str(yaml).unwrap();
+        assert_eq!(table.id(), "goblins");
+        assert_eq!(table.name(), "Goblins");
+    }
+
+    #[test]
+    fn load_table_str_rejects_range_gap() {
+        let yaml = r#"
+type: simple
+id: gappy
+name: Gappy
+roll: 1d6
+results:
+  - min: 1
+    max: 2
+    text: Low
+  - min: 5
+    max: 6
+    text: High
+"#;
+        let err = load_table_str(yaml).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::Validation(ValidationError::RangeGap { .. })
+        ));
+    }
+
+    #[test]
+    fn load_table_str_rejects_bad_dice() {
+        let yaml = r#"
+type: simple
+id: bad-dice
+name: Bad Dice
+roll: 1z6
+results:
+  - min: 1
+    max: 6
+    text: Whatever
+"#;
+        let err = load_table_str(yaml).unwrap_err();
+        assert!(matches!(
+            err,
+            Error::Validation(ValidationError::InvalidDiceExpression { .. })
+        ));
+    }
+
+    #[test]
+    fn load_table_str_rejects_malformed_yaml() {
+        let err = load_table_str("\t not: [valid").unwrap_err();
+        assert!(matches!(err, Error::Yaml(_)));
+    }
+
+    #[test]
+    fn load_table_str_rejects_missing_id() {
+        // Standalone tables must include `id`; the loader does not derive it
+        // (only the manifest loader does, from the filename).
+        let yaml = r#"
+type: simple
+name: No Id
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    text: Whatever
+"#;
+        let err = load_table_str(yaml).unwrap_err();
+        assert!(matches!(err, Error::Yaml(_)));
+    }
+
+    #[test]
+    fn load_table_str_allows_unresolved_chain_ref() {
+        // Locks the contract: chain references are NOT validated here.
+        // Resolution is deferred to validate_references against a registry.
+        let yaml = r#"
+type: simple
+id: with-chain
+name: With Chain
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    text: Triggers another table
+    chain:
+      - does-not-exist
+"#;
+        let table = load_table_str(yaml).unwrap();
+        assert_eq!(table.id(), "with-chain");
+    }
+
+    #[test]
+    fn load_table_str_allows_unresolved_compound_ref() {
+        // Compound references are deferred too; validate_table is a no-op
+        // for compound tables.
+        let yaml = r#"
+type: compound
+id: combo
+name: Combo
+tables:
+  - does-not-exist-a
+  - does-not-exist-b
+"#;
+        let table = load_table_str(yaml).unwrap();
+        assert_eq!(table.id(), "combo");
+    }
+
+    #[test]
+    fn load_table_reads_valid_file() {
+        let table = load_table(&fixtures_path("valid-collection/terrain/wilderness.yaml")).unwrap();
+        assert_eq!(table.name(), "Wilderness Terrain");
+    }
+
+    #[test]
+    fn load_table_missing_path_returns_file_read_error() {
+        let err = load_table(&PathBuf::from("/nonexistent/table.yaml")).unwrap_err();
+        assert!(matches!(err, Error::Load(LoadError::FileRead { .. })));
     }
 }
