@@ -17,3 +17,8 @@ session-handoff.md
 .worktrees
 .scratchpad
 .mcp.json
+.agents
+.codex
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
