@@ -1,10 +1,10 @@
 // ABOUTME: Data models for tables, manifests, and roll results.
 // ABOUTME: Serde structs for YAML deserialization and RollResult output type.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(untagged)]
 pub enum ChainRef {
     Simple(String),
@@ -45,7 +45,7 @@ impl ChainRef {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResultEntry {
     pub min: u32,
     pub max: u32,
@@ -53,7 +53,7 @@ pub struct ResultEntry {
     pub chain: Option<Vec<ChainRef>>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum Table {
     #[serde(rename = "simple")]
@@ -122,7 +122,7 @@ pub struct Manifest {
     pub base_path: PathBuf,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct RollResult {
     pub table_name: String,
     pub roll: Option<u32>,
@@ -133,6 +133,91 @@ pub struct RollResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn roll_result_serializes_to_json() {
+        let rr = RollResult {
+            table_name: "encounter".into(),
+            roll: Some(4),
+            text: Some("Bandits".into()),
+            children: vec![RollResult {
+                table_name: "bandit-strength".into(),
+                roll: Some(2),
+                text: Some("Weak".into()),
+                children: vec![],
+            }],
+        };
+        let v = serde_json::to_value(&rr).unwrap();
+        assert_eq!(v["table_name"], "encounter");
+        assert_eq!(v["roll"], 4);
+        assert_eq!(v["text"], "Bandits");
+        assert!(v["children"].is_array());
+        assert_eq!(v["children"].as_array().unwrap().len(), 1);
+        assert_eq!(v["children"][0]["table_name"], "bandit-strength");
+    }
+
+    #[test]
+    fn table_simple_json_round_trips_with_chain_refs() {
+        let table = Table::Simple {
+            id: "encounter".into(),
+            name: "Encounter".into(),
+            tags: vec!["test".into()],
+            roll: "1d4".into(),
+            results: vec![ResultEntry {
+                min: 1,
+                max: 4,
+                text: Some("Mixed".into()),
+                chain: Some(vec![
+                    ChainRef::Simple("a".into()),
+                    ChainRef::Modified {
+                        table: "b".into(),
+                        reroll: vec![1],
+                    },
+                ]),
+            }],
+        };
+        let v1 = serde_json::to_value(&table).unwrap();
+        let back: Table = serde_json::from_value(v1.clone()).unwrap();
+        let v2 = serde_json::to_value(&back).unwrap();
+        assert_eq!(v1, v2);
+
+        // Lock untagged ChainRef serialization: Simple -> bare string, Modified -> object.
+        assert!(v1["results"][0]["chain"][0].is_string());
+        assert!(v1["results"][0]["chain"][1].is_object());
+    }
+
+    #[test]
+    fn table_simple_serializes_type_tag() {
+        let table = Table::Simple {
+            id: "t".into(),
+            name: "T".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("Something".into()),
+                chain: None,
+            }],
+        };
+        let v = serde_json::to_value(&table).unwrap();
+        assert_eq!(v["type"], "simple");
+    }
+
+    #[test]
+    fn table_compound_json_round_trips() {
+        let table = Table::Compound {
+            id: "quick-npc".into(),
+            name: "Quick NPC".into(),
+            tags: vec!["npc".into()],
+            tables: vec!["npc-occupation".into(), "npc-disposition".into()],
+        };
+        let v1 = serde_json::to_value(&table).unwrap();
+        let back: Table = serde_json::from_value(v1.clone()).unwrap();
+        let v2 = serde_json::to_value(&back).unwrap();
+        assert_eq!(v1, v2);
+        assert_eq!(v1["type"], "compound");
+    }
 
     #[test]
     fn deserialize_simple_table() {
