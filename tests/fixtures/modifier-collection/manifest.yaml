@@ -1,0 +1,10 @@
+name: Modifier Test Collection
+version: "1.0"
+namespace: mod
+author: ~
+min_tool_version: ~
+directories:
+  - path: shadowdark
+    namespace: mod.shadowdark
+  - path: traveller
+    namespace: mod.traveller

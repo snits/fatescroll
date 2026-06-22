@@ -28,26 +28,26 @@ pub enum Error {
 #[derive(Debug, Error)]
 pub enum ValidationError {
     #[error("range reversed: min {min} > max {max} in table '{table}'")]
-    RangeReversed { table: String, min: u32, max: u32 },
+    RangeReversed { table: String, min: i32, max: i32 },
 
     #[error(
-        "entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'"
+        "entry range [{entry_min}..{entry_max}] outside valid range [{dice_min}..{dice_max}] in table '{table}'"
     )]
     EntryOutOfRange {
         table: String,
-        entry_min: u32,
-        entry_max: u32,
-        dice_min: u32,
-        dice_max: u32,
+        entry_min: i32,
+        entry_max: i32,
+        dice_min: i32,
+        dice_max: i32,
     },
 
     #[error("range gap in table '{table}': missing values {missing:?}")]
-    RangeGap { table: String, missing: Vec<u32> },
+    RangeGap { table: String, missing: Vec<i32> },
 
     #[error("range overlap in table '{table}': values {overlapping:?} covered multiple times")]
     RangeOverlap {
         table: String,
-        overlapping: Vec<u32>,
+        overlapping: Vec<i32>,
     },
 
     #[error("invalid dice expression '{expr}' in table '{table}': {reason}")]
@@ -90,6 +90,17 @@ pub enum ValidationError {
         filename: String,
         path: PathBuf,
     },
+
+    #[error("modifier_range reversed: min {min} > max {max} in table '{table}'")]
+    ModifierRangeReversed { table: String, min: i32, max: i32 },
+
+    #[error("modifier_range not supported for digit-dice expression '{expr}' in table '{table}'")]
+    ModifierUnsupportedForDigitDice { table: String, expr: String },
+
+    #[error(
+        "modifier_range produces an unusable envelope (width {width}, max {max}) in table '{table}'"
+    )]
+    ModifierRangeTooWide { table: String, width: i64, max: i64 },
 }
 
 #[derive(Debug, Error)]
@@ -136,4 +147,9 @@ pub enum RollError {
         attempts: usize,
         reroll_values: Vec<u32>,
     },
+
+    #[error(
+        "table '{table}' does not support a roll modifier (no modifier_range declared, or it is a compound table)"
+    )]
+    ModifierNotSupported { table: String },
 }

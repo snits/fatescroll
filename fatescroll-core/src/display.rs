@@ -14,6 +14,7 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
             name,
             tags,
             roll,
+            modifier_range,
             results,
             ..
         } => {
@@ -22,6 +23,9 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 writeln!(out, "Tags: {}", tags.join(", ")).unwrap();
             }
             writeln!(out, "Roll: {roll}").unwrap();
+            if let Some(mr) = modifier_range {
+                writeln!(out, "Modifier: {} to {}", mr.min, mr.max).unwrap();
+            }
             writeln!(out).unwrap();
 
             // Calculate range column width for alignment
@@ -29,9 +33,9 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 .iter()
                 .map(|r| {
                     if r.min == r.max {
-                        digit_count(r.min)
+                        format!("{}", r.min).len()
                     } else {
-                        digit_count(r.min) + 1 + digit_count(r.max)
+                        format!("{}-{}", r.min, r.max).len()
                     }
                 })
                 .max()
@@ -79,13 +83,6 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
     out
 }
 
-fn digit_count(n: u32) -> usize {
-    if n == 0 {
-        return 1;
-    }
-    n.ilog10() as usize + 1
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +94,7 @@ mod tests {
             name: "Wilderness Encounter".into(),
             tags: vec!["encounter".into(), "wilderness".into()],
             roll: "1d8".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -179,6 +177,7 @@ mod tests {
             name: "Wizard Mishap".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -215,6 +214,7 @@ mod tests {
             name: "Minimal".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 4,
@@ -226,5 +226,74 @@ mod tests {
 
         assert!(output.contains("Minimal (test.minimal)"));
         assert!(!output.contains("Tags:"));
+    }
+
+    #[test]
+    fn format_table_shows_modifier_range() {
+        let table = Table::Simple {
+            id: "carousing".into(),
+            name: "Carousing".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+            results: (1..=14)
+                .map(|v| ResultEntry {
+                    min: v,
+                    max: v,
+                    text: Some("E".into()),
+                    chain: None,
+                })
+                .collect(),
+        };
+        let output = format_table("ns.carousing", &table);
+        assert!(output.contains("Modifier: 0 to 6"));
+    }
+
+    #[test]
+    fn format_table_without_modifier_range_omits_line() {
+        let table = Table::Simple {
+            id: "plain".into(),
+            name: "Plain".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        let output = format_table("ns.plain", &table);
+        assert!(!output.contains("Modifier:"));
+    }
+
+    #[test]
+    fn format_table_with_negative_entries_aligns() {
+        let table = Table::Simple {
+            id: "aging".into(),
+            name: "Aging".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![
+                ResultEntry {
+                    min: -2,
+                    max: -1,
+                    text: Some("Decline".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 0,
+                    max: 6,
+                    text: Some("Stable".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let output = format_table("ns.aging", &table);
+        assert!(output.contains("-2--1"));
+        assert!(output.contains("Decline"));
+        assert!(output.contains("Stable"));
     }
 }
