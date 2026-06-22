@@ -91,7 +91,10 @@ Expected: FAIL — serde rejects `-2` for `u32` ("invalid value: integer `-2`").
 `validator.rs`:
 - `validate_result_entry`: unchanged logic (the `max < min` check works for `i32`).
 - `validate_contiguous_coverage`: after the existing `sim.min < 0 || sim.max < 0` rejection (KEEP IT — non-modifier tables stay non-negative), bind `let dice_min = sim.min as i32; let dice_max = sim.max as i32;`. The coverage vec stays `vec![0u32; (dice_max - dice_min + 1) as usize]` (count is non-negative); index with `(entry.min - dice_min) as usize` and `(entry.max - dice_min) as usize`. The `missing`/`overlapping` collectors now produce `i32`: `i as i32 + dice_min`. The pre-check `entry.min < dice_min || entry.max > dice_max` compares `i32`.
-- `validate_digit_dice_coverage`: `valid_values` stays `HashSet<u32>`. Guard negatives before casting: in the pre-check loop, `for v in entry.min..=entry.max { if v < 0 || !valid_values.contains(&(v as u32)) { return Err(EntryOutOfRange{..}) } }`. For coverage counting, only count `v` where `v >= 0`. `dice_min`/`dice_max` for the error become `i32` via `as i32`. `missing`/`overlapping` cast `u32 → i32` (values ≤ 666, safe).
+- `validate_digit_dice_coverage`: `valid_values` stays `HashSet<u32>`. Guard negatives before casting in BOTH loops, or it won't compile (the `i32` entry value can't index a `u32`-keyed structure):
+  - Pre-check loop: `for v in entry.min..=entry.max { if v < 0 || !valid_values.contains(&(v as u32)) { return Err(EntryOutOfRange{..}) } }`.
+  - **Coverage-count loop (current `validator.rs:122-128`):** `for v in entry.min..=entry.max { if v >= 0 { if let Some(c) = coverage.get_mut(&(v as u32)) { *c += 1; } } }` — note the explicit `&(v as u32)` cast; the `v >= 0` guard makes it safe (negatives can't be valid digit-dice values and were already rejected by the pre-check).
+  - `dice_min`/`dice_max` for the `EntryOutOfRange` error become `i32` via `as i32`. `missing`/`overlapping` collectors cast `u32 → i32` (values ≤ 666, safe).
 
 `roller.rs` — in the `Table::Simple` arm: keep the raw `roll_value: i64` and its `< 0 → NegativeRoll` guard. Replace `let roll_u32 = roll_value as u32;` with `let roll_i32 = roll_value as i32;`. Entry lookup: `roll_i32 >= e.min && roll_i32 <= e.max`. Reroll check (dice value is non-negative here): `reroll_values.contains(&(roll_i32 as u32))`. `RollResult.roll: Some(roll_i32)`. The reroll-exhaustion `break (roll_i32, entry.clone())` and downstream usage follow.
 
@@ -100,7 +103,7 @@ Expected: FAIL — serde rejects `-2` for `u32` ("invalid value: integer `-2`").
 - [ ] **Step 4: Update existing tests that assert `roll`/error field types.** `models.rs` `roll_result_serializes_to_json` still works (`v["roll"]` compares to `4`). No existing test asserts negative values; the migration is type-only. Run the full suite.
 
 Run: `cargo test`
-Expected: PASS — 175 existing tests + the new negative-deserialize test all green.
+Expected: PASS — all existing tests (≈175 at baseline) plus the new negative-deserialize test green.
 
 - [ ] **Step 5: Add a display test for negative alignment** — in `display.rs` tests:
 
@@ -234,6 +237,16 @@ results:
         _ => panic!("Expected Simple table"),
     }
 }
+
+#[test]
+fn modifier_range_round_trips_as_sequence() {
+    // Symmetric serde: serialize emits a 2-seq, deserialize accepts it back.
+    let mr = ModifierRange { min: -6, max: 0 };
+    let v = serde_json::to_value(mr).unwrap();
+    assert!(v.is_array(), "expected sequence form, got: {v}");
+    let back: ModifierRange = serde_json::from_value(v).unwrap();
+    assert_eq!(back, mr);
+}
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -251,11 +264,11 @@ pub struct ModifierRange {
 }
 ```
 
-Deserializing `[0, 6]` into a struct with two fields does NOT work out of the box — serde expects a map. Add `#[serde(from = "[i32; 2]")]` plus a `From<[i32; 2]>` impl so the YAML sequence form works:
+Deserializing `[0, 6]` into a struct with two fields does NOT work out of the box — serde expects a map. Make the type *symmetric*: deserialize from and serialize to a `[i32; 2]` sequence via `#[serde(from = ..., into = ...)]` plus the two `From` impls. Symmetry keeps `Table` round-trippable (serialize → YAML/JSON → deserialize), which the existing `table_simple_json_round_trips_with_chain_refs` test relies on:
 
 ```rust
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Deserialize)]
-#[serde(from = "[i32; 2]")]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(from = "[i32; 2]", into = "[i32; 2]")]
 pub struct ModifierRange {
     pub min: i32,
     pub max: i32,
@@ -266,9 +279,13 @@ impl From<[i32; 2]> for ModifierRange {
         ModifierRange { min: v[0], max: v[1] }
     }
 }
-```
 
-(Note: `#[serde(from)]` makes the type deserialize-from `[i32;2]`; `Serialize` still emits the struct fields — acceptable for the Tauri boundary. If a round-trip seq form is later needed, add `#[serde(into = "[i32; 2]")]`; not required now.)
+impl From<ModifierRange> for [i32; 2] {
+    fn from(m: ModifierRange) -> Self {
+        [m.min, m.max]
+    }
+}
+```
 
 Add the field to `Table::Simple`:
 
@@ -327,6 +344,21 @@ Refactor the two contiguous coverage checks to share one `i32` routine, and add 
 
     #[error("modifier_range not supported for digit-dice expression '{expr}' in table '{table}'")]
     ModifierUnsupportedForDigitDice { table: String, expr: String },
+
+    #[error("modifier_range envelope too wide ({width}) in table '{table}'; max {max}")]
+    ModifierRangeTooWide { table: String, width: i64, max: i64 },
+```
+
+Also reword the existing `EntryOutOfRange` message so it reads correctly for
+modifier tables (the fields now carry the *envelope* for those). Change its
+`#[error(...)]` text from `... outside dice range [{dice_min}..{dice_max}] ...`
+to envelope-neutral wording:
+
+```rust
+    #[error(
+        "entry range [{entry_min}..{entry_max}] outside valid range [{dice_min}..{dice_max}] in table '{table}'"
+    )]
+    EntryOutOfRange { table: String, entry_min: i32, entry_max: i32, dice_min: i32, dice_max: i32 },
 ```
 
 - [ ] **Step 2: Write failing validator tests** — in `validator.rs` tests. Add a small constructor helper if convenient, otherwise inline. (Remember `modifier_range:` field on every `Table::Simple`.)
@@ -418,6 +450,18 @@ fn modifier_range_on_complex_expr_errors() {
     };
     assert!(validate_table(&table).is_err());
 }
+
+#[test]
+fn absurd_modifier_range_errors_not_panics() {
+    // An i32::MAX-wide envelope must error cleanly, not overflow or OOM.
+    let table = Table::Simple {
+        id: "huge".into(), name: "Huge".into(), tags: vec![],
+        roll: "1d8".into(),
+        modifier_range: Some(crate::models::ModifierRange { min: 0, max: i32::MAX }),
+        results: vec![ResultEntry { min: 1, max: 8, text: Some("X".into()), chain: None }],
+    };
+    assert!(matches!(validate_table(&table).unwrap_err(), ValidationError::ModifierRangeTooWide { .. }));
+}
 ```
 
 - [ ] **Step 3: Run to verify failure**
@@ -507,7 +551,19 @@ Table::Simple { name, roll, results, modifier_range, .. } => {
                         table: name.clone(), expr: roll.clone(), reason: other.to_string(),
                     },
                 })?;
-            (d_min as i32 + mr.min, d_max as i32 + mr.max)
+            // Widen to i64: modifier_range bounds are unbounded i32, so
+            // `d_max + mr.max` can overflow. Bound the envelope width before
+            // allocating the coverage vec (an unbounded width would also OOM).
+            const MAX_ENVELOPE_WIDTH: i64 = 100_000;
+            let env_min = d_min as i64 + mr.min as i64;
+            let env_max = d_max as i64 + mr.max as i64;
+            let width = env_max - env_min;
+            if width > MAX_ENVELOPE_WIDTH {
+                return Err(ValidationError::ModifierRangeTooWide {
+                    table: name.clone(), width, max: MAX_ENVELOPE_WIDTH,
+                });
+            }
+            (env_min as i32, env_max as i32)
         }
         None => {
             // Unchanged path: simulate, reject negative dice ranges.
@@ -674,6 +730,16 @@ fn validated_modifier_table_never_out_of_range() {
         }
     }
 }
+
+#[test]
+fn extreme_modifier_clamps_without_overflow() {
+    // i32::MAX / i32::MIN must clamp to entry bounds, not panic or wrap.
+    let reg = carousing_registry();
+    let mut rng = diceman::FastRng::with_seed(3);
+    assert_eq!(roll_with_rng_modifier(&reg, "ns.carousing", Some(i32::MAX), &mut rng).unwrap().roll.unwrap(), 14);
+    let mut rng = diceman::FastRng::with_seed(3);
+    assert_eq!(roll_with_rng_modifier(&reg, "ns.carousing", Some(i32::MIN), &mut rng).unwrap().roll.unwrap(), 1);
+}
 ```
 
 - [ ] **Step 3: Run to verify failure**
@@ -722,11 +788,23 @@ Add `modifier: Option<i32>` as the last param of `roll_recursive`. In the `Table
 
 ```rust
 let lookup = match modifier_range {
-    Some(_) => {
-        let entry_min = results.iter().map(|e| e.min).min().unwrap();
-        let entry_max = results.iter().map(|e| e.max).max().unwrap();
-        (roll_i32 + modifier.unwrap_or(0)).clamp(entry_min, entry_max)
-    }
+    Some(_) => match (
+        results.iter().map(|e| e.min).min(),
+        results.iter().map(|e| e.max).max(),
+    ) {
+        (Some(entry_min), Some(entry_max)) => {
+            // Widen to i64 before adding: --modifier is an unbounded i32, so
+            // `roll_i32 + modifier` would overflow (debug panic / release wrap)
+            // for extreme values. The spec's "allow overflow" means clamp, not wrap.
+            ((roll_i32 as i64) + (modifier.unwrap_or(0) as i64))
+                .clamp(entry_min as i64, entry_max as i64) as i32
+        }
+        // Empty results: don't clamp. The entry search below then yields
+        // RollOutOfRange — parity with the non-modifier path, no panic. The
+        // roller is a public API callable on an unvalidated registry, so we
+        // must not `.unwrap()` here even though load_collection rejects empties.
+        _ => roll_i32,
+    },
     None => roll_i32, // unchanged path; modifier is guaranteed None here
 };
 ```
@@ -940,7 +1018,7 @@ fn roll_without_modifier_still_works() {
 }
 ```
 
-(Confirm `test.encounters.animal-type` is the correct FQID in `valid-collection`; adjust to an actual non-modifier table id if needed.)
+(`test.encounters.animal-type` is a confirmed non-modifier table in `valid-collection`.)
 
 - [ ] **Step 3: Run to verify failure**
 
@@ -1007,6 +1085,22 @@ Assisted-by: Claude:claude-opus-4-8"
 ```
 
 ---
+
+## Known behavior notes (documented decisions, from plan review)
+
+- **`modifier_range` with `min > 0`, rolled without `--modifier`:** the modifier
+  defaults to 0, so low raw rolls clamp up to the bottom entry and the top of
+  the envelope is unreachable. Safe (no panic, no `RollOutOfRange`) and an
+  inherent consequence of "modifier optional + clamp." Real tables (both
+  fixtures) use `mod_min ≤ 0`, so they are unaffected. Accepted for a personal
+  tool; not worth extra validation.
+- **A `roll` expression with an intrinsic negative range (e.g. `1d6-2`) plus a
+  `modifier_range`** is rejected by `dice_range()` (`UnsupportedDiceExpression`)
+  even if the modifier would lift the envelope positive. The dice expression's
+  own range must be non-negative; negativity must come from `modifier_range`.
+  Accepted known limitation.
+- **The clamp path assumes a validated (non-empty) table** for correctness but
+  does not *panic* on an empty one (guarded — falls through to `RollOutOfRange`).
 
 ## Final verification (after all tasks)
 
