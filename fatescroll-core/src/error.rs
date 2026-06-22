@@ -147,4 +147,9 @@ pub enum RollError {
         attempts: usize,
         reroll_values: Vec<u32>,
     },
+
+    #[error(
+        "table '{table}' does not support a roll modifier (no modifier_range declared, or it is a compound table)"
+    )]
+    ModifierNotSupported { table: String },
 }
