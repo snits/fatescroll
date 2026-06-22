@@ -90,6 +90,7 @@ mod tests {
             name: "Wilderness Encounter".into(),
             tags: vec!["encounter".into(), "wilderness".into()],
             roll: "1d8".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -172,6 +173,7 @@ mod tests {
             name: "Wizard Mishap".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -208,6 +210,7 @@ mod tests {
             name: "Minimal".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 4,
@@ -228,6 +231,7 @@ mod tests {
             name: "Aging".into(),
             tags: vec![],
             roll: "1d6".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: -2,

@@ -182,6 +182,7 @@ mod tests {
                 name: "Simple Test".into(),
                 tags: vec![],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![
                     ResultEntry {
                         min: 1,
@@ -207,6 +208,7 @@ mod tests {
                 name: "Chained".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![
                     ResultEntry {
                         min: 1,
@@ -243,6 +245,7 @@ mod tests {
                 name: "Interpolated".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -297,6 +300,7 @@ mod tests {
                 name: "Parent".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -313,6 +317,7 @@ mod tests {
                 name: "Child".into(),
                 tags: vec![],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -351,6 +356,7 @@ mod tests {
                 name: "A".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -367,6 +373,7 @@ mod tests {
                 name: "B".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -392,6 +399,7 @@ mod tests {
                 name: "Negative".into(),
                 tags: vec![],
                 roll: "1d4-10".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -417,6 +425,7 @@ mod tests {
                 name: "Gap".into(),
                 tags: vec![],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 100,
                     max: 100,
@@ -442,6 +451,7 @@ mod tests {
                 name: "BadDice".into(),
                 tags: vec![],
                 roll: "not_a_dice_expr".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -467,6 +477,7 @@ mod tests {
                 name: "Fallback".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -498,6 +509,7 @@ mod tests {
                 name: "NoText".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -523,6 +535,7 @@ mod tests {
                 name: "Reroll Parent".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![
                     ResultEntry {
                         min: 1,
@@ -550,6 +563,7 @@ mod tests {
                 name: "Reroll Target".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![
                     ResultEntry {
                         min: 1,
@@ -591,6 +605,7 @@ mod tests {
                 name: "MultiChain".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -610,6 +625,7 @@ mod tests {
                 name: "Child A".into(),
                 tags: vec![],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -626,6 +642,7 @@ mod tests {
                 name: "Child B".into(),
                 tags: vec![],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -653,6 +670,7 @@ mod tests {
                 name: "Exhaust Parent".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -672,6 +690,7 @@ mod tests {
                 name: "Exhaust Target".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 4,
@@ -697,6 +716,7 @@ mod tests {
                 name: "Wizard Mishap".into(),
                 tags: vec![],
                 roll: "1d4".into(),
+                modifier_range: None,
                 results: vec![
                     ResultEntry {
                         min: 1,

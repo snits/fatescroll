@@ -62,6 +62,7 @@ mod tests {
                 name: "Gem Type".into(),
                 tags: vec!["treasure".into(), "gems".into()],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -78,6 +79,7 @@ mod tests {
                 name: "Wilderness Encounter".into(),
                 tags: vec!["encounter".into(), "wilderness".into()],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,
@@ -94,6 +96,7 @@ mod tests {
                 name: "NPC Occupation".into(),
                 tags: vec!["npc".into()],
                 roll: "1d6".into(),
+                modifier_range: None,
                 results: vec![ResultEntry {
                     min: 1,
                     max: 6,

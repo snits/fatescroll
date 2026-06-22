@@ -348,6 +348,7 @@ mod tests {
             name: "Test".into(),
             tags: vec![],
             roll: "1d6".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -373,6 +374,7 @@ mod tests {
             name: "Gappy".into(),
             tags: vec![],
             roll: "1d6".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -402,6 +404,7 @@ mod tests {
             name: "Overlapping".into(),
             tags: vec![],
             roll: "1d6".into(),
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -431,6 +434,7 @@ mod tests {
             name: "BadDice".into(),
             tags: vec![],
             roll: "1z6".into(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 6,
@@ -452,6 +456,7 @@ mod tests {
             name: "Below".into(),
             tags: vec![],
             roll: "1d6".into(), // range 1-6
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 0, // below dice_min of 1
@@ -478,6 +483,7 @@ mod tests {
             name: "Above".into(),
             tags: vec![],
             roll: "1d6".into(), // range 1-6
+            modifier_range: None,
             results: vec![
                 ResultEntry {
                     min: 1,
@@ -518,6 +524,7 @@ mod tests {
                     name: "Broken".into(),
                     tags: vec![],
                     roll: "1d4".into(),
+                    modifier_range: None,
                     results: vec![
                         ResultEntry {
                             min: 1,
@@ -570,6 +577,7 @@ mod tests {
             name: "Negative".into(),
             tags: vec![],
             roll: "1d4-3".into(), // range -2 to 1
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 4,
@@ -599,6 +607,7 @@ mod tests {
             name: "D66 Full".into(),
             tags: vec![],
             roll: "D66".into(),
+            modifier_range: None,
             results,
         };
         assert!(validate_table(&table).is_ok());
@@ -623,6 +632,7 @@ mod tests {
             name: "D66 Gap".into(),
             tags: vec![],
             roll: "D66".into(),
+            modifier_range: None,
             results,
         };
         let err = validate_table(&table).unwrap_err();
@@ -657,6 +667,7 @@ mod tests {
             name: "D66 Invalid".into(),
             tags: vec![],
             roll: "D66".into(),
+            modifier_range: None,
             results,
         };
         let err = validate_table(&table).unwrap_err();
