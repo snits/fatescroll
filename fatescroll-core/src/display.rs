@@ -14,6 +14,7 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
             name,
             tags,
             roll,
+            modifier_range,
             results,
             ..
         } => {
@@ -22,6 +23,9 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 writeln!(out, "Tags: {}", tags.join(", ")).unwrap();
             }
             writeln!(out, "Roll: {roll}").unwrap();
+            if let Some(mr) = modifier_range {
+                writeln!(out, "Modifier: {} to {}", mr.min, mr.max).unwrap();
+            }
             writeln!(out).unwrap();
 
             // Calculate range column width for alignment
@@ -222,6 +226,46 @@ mod tests {
 
         assert!(output.contains("Minimal (test.minimal)"));
         assert!(!output.contains("Tags:"));
+    }
+
+    #[test]
+    fn format_table_shows_modifier_range() {
+        let table = Table::Simple {
+            id: "carousing".into(),
+            name: "Carousing".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+            results: (1..=14)
+                .map(|v| ResultEntry {
+                    min: v,
+                    max: v,
+                    text: Some("E".into()),
+                    chain: None,
+                })
+                .collect(),
+        };
+        let output = format_table("ns.carousing", &table);
+        assert!(output.contains("Modifier: 0 to 6"));
+    }
+
+    #[test]
+    fn format_table_without_modifier_range_omits_line() {
+        let table = Table::Simple {
+            id: "plain".into(),
+            name: "Plain".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        let output = format_table("ns.plain", &table);
+        assert!(!output.contains("Modifier:"));
     }
 
     #[test]
