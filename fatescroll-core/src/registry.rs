@@ -88,6 +88,7 @@ mod tests {
             name: name.to_string(),
             tags: vec!["test".to_string()],
             roll: "1d6".to_string(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 6,
@@ -155,6 +156,7 @@ mod tests {
             name: "Wolf Count".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![],
         };
         reg.register("test.encounters.wolf-count".into(), encounter_table)
@@ -175,6 +177,7 @@ mod tests {
             name: "Wolf Count 1".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![],
         };
         let table2 = Table::Simple {
@@ -182,6 +185,7 @@ mod tests {
             name: "Wolf Count 2".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![],
         };
         reg.register("test.encounters.wolf-count".into(), table1)
@@ -201,6 +205,7 @@ mod tests {
             name: "Local Wolf Count".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![],
         };
         let remote = Table::Simple {
@@ -208,6 +213,7 @@ mod tests {
             name: "Remote Wolf Count".into(),
             tags: vec![],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![],
         };
         reg.register("test.encounters.wolf-count".into(), local)

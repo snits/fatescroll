@@ -1,0 +1,29 @@
+id: carousing
+name: Carousing
+type: simple
+tags:
+  - shadowdark
+roll: 1d8
+modifier_range: [0, 6]
+results:
+  - min: 1
+    max: 1
+    text: "Thrown in jail"
+  - min: 2
+    max: 2
+    text: "Robbed blind"
+  - min: 3
+    max: 4
+    text: "Hungover, lose a day"
+  - min: 5
+    max: 7
+    text: "A good night"
+  - min: 8
+    max: 10
+    text: "Made a friend"
+  - min: 11
+    max: 13
+    text: "Lucky windfall"
+  - min: 14
+    max: 14
+    text: "Legendary carouse"

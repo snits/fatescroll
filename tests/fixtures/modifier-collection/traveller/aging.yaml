@@ -1,0 +1,20 @@
+id: aging
+name: Aging
+type: simple
+tags:
+  - traveller
+roll: 1d6
+modifier_range: [-6, 0]
+results:
+  - min: -5
+    max: -3
+    text: "Severe decline"
+  - min: -2
+    max: -1
+    text: "Decline"
+  - min: 0
+    max: 2
+    text: "Aging sets in"
+  - min: 3
+    max: 6
+    text: "No effect"

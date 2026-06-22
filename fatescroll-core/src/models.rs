@@ -47,10 +47,32 @@ impl ChainRef {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResultEntry {
-    pub min: u32,
-    pub max: u32,
+    pub min: i32,
+    pub max: i32,
     pub text: Option<String>,
     pub chain: Option<Vec<ChainRef>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "[i32; 2]", into = "[i32; 2]")]
+pub struct ModifierRange {
+    pub min: i32,
+    pub max: i32,
+}
+
+impl From<[i32; 2]> for ModifierRange {
+    fn from(v: [i32; 2]) -> Self {
+        ModifierRange {
+            min: v[0],
+            max: v[1],
+        }
+    }
+}
+
+impl From<ModifierRange> for [i32; 2] {
+    fn from(m: ModifierRange) -> Self {
+        [m.min, m.max]
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -63,6 +85,8 @@ pub enum Table {
         #[serde(default)]
         tags: Vec<String>,
         roll: String,
+        #[serde(default)]
+        modifier_range: Option<ModifierRange>,
         results: Vec<ResultEntry>,
     },
     #[serde(rename = "compound")]
@@ -125,7 +149,7 @@ pub struct Manifest {
 #[derive(Debug, Serialize, Clone)]
 pub struct RollResult {
     pub table_name: String,
-    pub roll: Option<u32>,
+    pub roll: Option<i32>,
     pub text: Option<String>,
     pub children: Vec<RollResult>,
 }
@@ -163,6 +187,7 @@ mod tests {
             name: "Encounter".into(),
             tags: vec!["test".into()],
             roll: "1d4".into(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 4,
@@ -193,6 +218,7 @@ mod tests {
             name: "T".into(),
             tags: vec![],
             roll: "1d6".into(),
+            modifier_range: None,
             results: vec![ResultEntry {
                 min: 1,
                 max: 6,
@@ -244,6 +270,7 @@ results:
                 tags,
                 roll,
                 results,
+                ..
             } => {
                 assert_eq!(id, "test-table");
                 assert_eq!(name, "Test Table");
@@ -499,5 +526,83 @@ results:
             Table::Simple { tags, .. } => assert!(tags.is_empty()),
             _ => panic!("Expected Simple table"),
         }
+    }
+
+    #[test]
+    fn deserialize_simple_table_with_negative_entries() {
+        let yaml = r#"
+id: aging
+name: Aging
+type: simple
+roll: 1d6
+results:
+  - min: -2
+    max: -1
+    text: Decline
+  - min: 0
+    max: 6
+    text: Stable
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match table {
+            Table::Simple { results, .. } => {
+                assert_eq!(results[0].min, -2);
+                assert_eq!(results[0].max, -1);
+            }
+            _ => panic!("Expected Simple table"),
+        }
+    }
+
+    #[test]
+    fn deserialize_table_with_modifier_range() {
+        let yaml = r#"
+id: carousing
+name: Carousing
+type: simple
+roll: 1d8
+modifier_range: [0, 6]
+results:
+  - min: 1
+    max: 14
+    text: Outcome
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match table {
+            Table::Simple { modifier_range, .. } => {
+                let mr = modifier_range.expect("expected modifier_range");
+                assert_eq!(mr.min, 0);
+                assert_eq!(mr.max, 6);
+            }
+            _ => panic!("Expected Simple table"),
+        }
+    }
+
+    #[test]
+    fn modifier_range_absent_defaults_to_none() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    text: X
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match table {
+            Table::Simple { modifier_range, .. } => assert!(modifier_range.is_none()),
+            _ => panic!("Expected Simple table"),
+        }
+    }
+
+    #[test]
+    fn modifier_range_round_trips_as_sequence() {
+        // Symmetric serde: serialize emits a 2-seq, deserialize accepts it back.
+        let mr = ModifierRange { min: -6, max: 0 };
+        let v = serde_json::to_value(mr).unwrap();
+        assert!(v.is_array(), "expected sequence form, got: {v}");
+        let back: ModifierRange = serde_json::from_value(v).unwrap();
+        assert_eq!(back, mr);
     }
 }
