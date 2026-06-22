@@ -31,7 +31,7 @@ pub enum ValidationError {
     RangeReversed { table: String, min: i32, max: i32 },
 
     #[error(
-        "entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'"
+        "entry range [{entry_min}..{entry_max}] outside valid range [{dice_min}..{dice_max}] in table '{table}'"
     )]
     EntryOutOfRange {
         table: String,
@@ -90,6 +90,17 @@ pub enum ValidationError {
         filename: String,
         path: PathBuf,
     },
+
+    #[error("modifier_range reversed: min {min} > max {max} in table '{table}'")]
+    ModifierRangeReversed { table: String, min: i32, max: i32 },
+
+    #[error("modifier_range not supported for digit-dice expression '{expr}' in table '{table}'")]
+    ModifierUnsupportedForDigitDice { table: String, expr: String },
+
+    #[error(
+        "modifier_range produces an unusable envelope (width {width}, max {max}) in table '{table}'"
+    )]
+    ModifierRangeTooWide { table: String, width: i64, max: i64 },
 }
 
 #[derive(Debug, Error)]

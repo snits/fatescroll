@@ -12,6 +12,10 @@ use std::sync::LazyLock;
 static NAMESPACE_SEGMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]*$").unwrap());
 
+/// Maximum span of a modifier table's entry envelope. Bounds the coverage
+/// allocation and guards against overflow from absurd modifier_range bounds.
+const MAX_ENVELOPE_WIDTH: i64 = 100_000;
+
 pub fn validate_namespace(namespace: &str) -> Result<(), ValidationError> {
     if namespace.is_empty() {
         return Err(ValidationError::InvalidNamespace {
@@ -55,27 +59,85 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             name,
             roll,
             results,
+            modifier_range,
             ..
         } => {
-            // Validate dice expression is parseable
             let parsed =
                 diceman::parse(roll).map_err(|e| ValidationError::InvalidDiceExpression {
                     table: name.clone(),
                     expr: roll.clone(),
                     reason: e.to_string(),
                 })?;
-
-            // Validate each result entry
             for entry in results {
                 validate_result_entry(entry, name)?;
             }
 
-            // Dispatch to digit-dice or regular coverage checking
             if let Expr::DigitRoll { sides, count } = parsed {
-                validate_digit_dice_coverage(name, roll, results, sides, count)
-            } else {
-                validate_contiguous_coverage(name, roll, results)
+                if modifier_range.is_some() {
+                    return Err(ValidationError::ModifierUnsupportedForDigitDice {
+                        table: name.clone(),
+                        expr: roll.clone(),
+                    });
+                }
+                return validate_digit_dice_coverage(name, roll, results, sides, count);
             }
+
+            let (envelope_min, envelope_max) = match modifier_range {
+                Some(mr) => {
+                    if mr.min > mr.max {
+                        return Err(ValidationError::ModifierRangeReversed {
+                            table: name.clone(),
+                            min: mr.min,
+                            max: mr.max,
+                        });
+                    }
+                    let (d_min, d_max) = crate::dice::dice_range(roll).map_err(|e| match e {
+                        crate::error::Error::Validation(v) => v,
+                        other => ValidationError::InvalidDiceExpression {
+                            table: name.clone(),
+                            expr: roll.clone(),
+                            reason: other.to_string(),
+                        },
+                    })?;
+                    let env_min = d_min as i64 + mr.min as i64;
+                    let env_max = d_max as i64 + mr.max as i64;
+                    let width = env_max - env_min;
+                    // Reject envelopes too wide to allocate, or whose endpoints fall
+                    // outside i32 (entries are i32, so such an envelope is meaningless).
+                    if width > MAX_ENVELOPE_WIDTH
+                        || env_min < i32::MIN as i64
+                        || env_max > i32::MAX as i64
+                    {
+                        return Err(ValidationError::ModifierRangeTooWide {
+                            table: name.clone(),
+                            width,
+                            max: MAX_ENVELOPE_WIDTH,
+                        });
+                    }
+                    (env_min as i32, env_max as i32)
+                }
+                None => {
+                    let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
+                        ValidationError::InvalidDiceExpression {
+                            table: name.clone(),
+                            expr: roll.clone(),
+                            reason: e.to_string(),
+                        }
+                    })?;
+                    if sim.min < 0 || sim.max < 0 {
+                        return Err(ValidationError::InvalidDiceExpression {
+                            table: name.clone(),
+                            expr: roll.clone(),
+                            reason: format!(
+                                "dice range [{}, {}] includes negative values",
+                                sim.min, sim.max
+                            ),
+                        });
+                    }
+                    (sim.min as i32, sim.max as i32)
+                }
+            };
+            validate_envelope_coverage(name, envelope_min, envelope_max, results)
         }
         Table::Compound { .. } => {
             // Per-type validation for compound tables is minimal.
@@ -158,62 +220,40 @@ fn validate_digit_dice_coverage(
     Ok(())
 }
 
-/// Check coverage for a contiguous dice expression (1d6, 2d6, 1d8+1, etc.).
-/// Every integer value in [dice_min, dice_max] must be covered exactly once.
-fn validate_contiguous_coverage(
+/// Check that `results` form a contiguous, non-overlapping cover of
+/// [envelope_min, envelope_max] exactly. Any value outside the envelope,
+/// any gap, or any overlap is an error.
+fn validate_envelope_coverage(
     name: &str,
-    roll: &str,
+    envelope_min: i32,
+    envelope_max: i32,
     results: &[ResultEntry],
 ) -> Result<(), ValidationError> {
-    let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
-        ValidationError::InvalidDiceExpression {
-            table: name.to_string(),
-            expr: roll.to_string(),
-            reason: e.to_string(),
-        }
-    })?;
-    if sim.min < 0 || sim.max < 0 {
-        return Err(ValidationError::InvalidDiceExpression {
-            table: name.to_string(),
-            expr: roll.to_string(),
-            reason: format!(
-                "dice range [{}, {}] includes negative values",
-                sim.min, sim.max
-            ),
-        });
-    }
-    let dice_min = sim.min as i32;
-    let dice_max = sim.max as i32;
-
-    // Pre-check: every entry must fall within dice range
     for entry in results {
-        if entry.min < dice_min || entry.max > dice_max {
+        if entry.min < envelope_min || entry.max > envelope_max {
             return Err(ValidationError::EntryOutOfRange {
                 table: name.to_string(),
                 entry_min: entry.min,
                 entry_max: entry.max,
-                dice_min,
-                dice_max,
+                dice_min: envelope_min,
+                dice_max: envelope_max,
             });
         }
     }
-
-    // Check range coverage: every value in [dice_min, dice_max]
-    // must be covered exactly once
-    let mut coverage = vec![0u32; (dice_max - dice_min + 1) as usize];
+    let len = (envelope_max - envelope_min + 1) as usize;
+    let mut coverage = vec![0u32; len];
     for entry in results {
-        let start = (entry.min - dice_min) as usize;
-        let end = (entry.max - dice_min) as usize;
+        let start = (entry.min - envelope_min) as usize;
+        let end = (entry.max - envelope_min) as usize;
         for slot in coverage.iter_mut().take(end + 1).skip(start) {
             *slot += 1;
         }
     }
-
     let missing: Vec<i32> = coverage
         .iter()
         .enumerate()
-        .filter(|(_, count)| **count == 0)
-        .map(|(i, _)| i as i32 + dice_min)
+        .filter(|(_, c)| **c == 0)
+        .map(|(i, _)| i as i32 + envelope_min)
         .collect();
     if !missing.is_empty() {
         return Err(ValidationError::RangeGap {
@@ -221,12 +261,11 @@ fn validate_contiguous_coverage(
             missing,
         });
     }
-
     let overlapping: Vec<i32> = coverage
         .iter()
         .enumerate()
-        .filter(|(_, count)| **count > 1)
-        .map(|(i, _)| i as i32 + dice_min)
+        .filter(|(_, c)| **c > 1)
+        .map(|(i, _)| i as i32 + envelope_min)
         .collect();
     if !overlapping.is_empty() {
         return Err(ValidationError::RangeOverlap {
@@ -234,7 +273,6 @@ fn validate_contiguous_coverage(
             overlapping,
         });
     }
-
     Ok(())
 }
 
@@ -675,6 +713,205 @@ mod tests {
             matches!(err, ValidationError::EntryOutOfRange { .. }),
             "Expected EntryOutOfRange, got: {err:?}"
         );
+    }
+
+    #[test]
+    fn modifier_table_strict_expand_valid_shadowdark() {
+        let results = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("E{v}")),
+                chain: None,
+            })
+            .collect();
+        let table = Table::Simple {
+            id: "carousing".into(),
+            name: "Carousing".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+            results,
+        };
+        assert!(validate_table(&table).is_ok());
+    }
+
+    #[test]
+    fn modifier_table_strict_expand_valid_traveller_negative() {
+        let results = (-5..=6)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("E{v}")),
+                chain: None,
+            })
+            .collect();
+        let table = Table::Simple {
+            id: "aging".into(),
+            name: "Aging".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: -6, max: 0 }),
+            results,
+        };
+        assert!(validate_table(&table).is_ok());
+    }
+    #[test]
+    fn modifier_table_gap_errors() {
+        let results: Vec<ResultEntry> = (1..=14)
+            .filter(|&v| v != 7)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some("E".into()),
+                chain: None,
+            })
+            .collect();
+        let table = Table::Simple {
+            id: "carousing".into(),
+            name: "Carousing".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+            results,
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::RangeGap { .. }
+        ));
+    }
+    #[test]
+    fn modifier_table_entry_beyond_envelope_errors() {
+        let mut results: Vec<ResultEntry> = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some("E".into()),
+                chain: None,
+            })
+            .collect();
+        results.push(ResultEntry {
+            min: 15,
+            max: 15,
+            text: Some("Over".into()),
+            chain: None,
+        });
+        let table = Table::Simple {
+            id: "carousing".into(),
+            name: "Carousing".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+            results,
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::EntryOutOfRange { .. }
+        ));
+    }
+    #[test]
+    fn modifier_range_reversed_errors() {
+        let table = Table::Simple {
+            id: "bad".into(),
+            name: "Bad".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 6, max: 0 }),
+            results: vec![ResultEntry {
+                min: 1,
+                max: 8,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::ModifierRangeReversed { .. }
+        ));
+    }
+    #[test]
+    fn modifier_range_on_digit_dice_errors() {
+        let table = Table::Simple {
+            id: "d66".into(),
+            name: "D66".into(),
+            tags: vec![],
+            roll: "D66".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 1 }),
+            results: vec![ResultEntry {
+                min: 11,
+                max: 11,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::ModifierUnsupportedForDigitDice { .. }
+        ));
+    }
+    #[test]
+    fn modifier_range_on_complex_expr_errors() {
+        let table = Table::Simple {
+            id: "kh".into(),
+            name: "KH".into(),
+            tags: vec![],
+            roll: "4d6kh3".into(),
+            modifier_range: Some(crate::models::ModifierRange { min: 0, max: 1 }),
+            results: vec![ResultEntry {
+                min: 3,
+                max: 19,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        assert!(validate_table(&table).is_err());
+    }
+    #[test]
+    fn absurd_modifier_range_errors_not_panics() {
+        let table = Table::Simple {
+            id: "huge".into(),
+            name: "Huge".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange {
+                min: 0,
+                max: i32::MAX,
+            }),
+            results: vec![ResultEntry {
+                min: 1,
+                max: 8,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::ModifierRangeTooWide { .. }
+        ));
+    }
+    #[test]
+    fn modifier_range_endpoint_overflow_errors_not_panics() {
+        // Small width but an endpoint past i32::MAX must error cleanly, not wrap/panic.
+        let table = Table::Simple {
+            id: "edge".into(),
+            name: "Edge".into(),
+            tags: vec![],
+            roll: "1d8".into(),
+            modifier_range: Some(crate::models::ModifierRange {
+                min: i32::MAX - 10,
+                max: i32::MAX,
+            }),
+            results: vec![ResultEntry {
+                min: 1,
+                max: 8,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        assert!(matches!(
+            validate_table(&table).unwrap_err(),
+            ValidationError::ModifierRangeTooWide { .. }
+        ));
     }
 
     #[test]
