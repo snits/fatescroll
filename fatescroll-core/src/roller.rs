@@ -133,6 +133,13 @@ fn roll_recursive(
                             value: lookup as i64,
                         })?;
 
+                    // Reroll matches on the raw die, not the modified `lookup`:
+                    // reroll_values come from a parent chain ref and target a child
+                    // table's own rolls, while a modifier applies only at the top
+                    // level (children are rolled with modifier None). The two never
+                    // coexist, so `roll_i32 == lookup` whenever reroll_values is
+                    // non-empty. The `as u32` cast is safe — the NegativeRoll guard
+                    // above guarantees `roll_i32 >= 0`.
                     if reroll_values.contains(&(roll_i32 as u32)) {
                         attempts += 1;
                         if attempts >= MAX_REROLL_ATTEMPTS {
