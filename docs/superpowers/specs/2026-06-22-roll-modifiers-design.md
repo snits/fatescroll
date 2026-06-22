@@ -134,11 +134,19 @@ Envelope source per Simple table:
 ### 7. Errors — `error.rs`
 
 - Coverage error fields (`RangeReversed`, `EntryOutOfRange`, `RangeGap`,
-  `RangeOverlap`) → `i32`.
+  `RangeOverlap`) → `i32`. `EntryOutOfRange`'s message uses envelope-neutral
+  wording ("valid range") since it reports the envelope for modifier tables.
 - Add `ValidationError::ModifierRangeReversed { table, min, max }`.
 - Add `ValidationError::ModifierUnsupportedForDigitDice { table, expr }`.
+- Add `ValidationError::ModifierRangeTooWide { table, width, max }` — guards
+  against overflow and unbounded coverage-vector allocation from absurd
+  `modifier_range` bounds (envelope width capped at 100_000).
 - Add `RollError::ModifierNotSupported { table }`.
 - `RollError::RollOutOfRange.value` stays `i64`.
+
+**Overflow safety:** both the validation envelope (`dice ± modifier_range`) and
+the runtime clamp (`raw_dice + modifier`) are computed in `i64` before any cast
+back to `i32`, because `modifier_range`/`--modifier` are unbounded `i32`.
 
 ## Testing (TDD throughout)
 
