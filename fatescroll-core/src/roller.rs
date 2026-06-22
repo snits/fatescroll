@@ -68,7 +68,7 @@ fn roll_recursive(
             results,
             ..
         } => {
-            let (roll_u32, entry) = {
+            let (roll_i32, entry) = {
                 let mut attempts = 0;
                 loop {
                     let dice_result = diceman::roll_with_rng(roll_expr, rng).map_err(|e| {
@@ -83,17 +83,17 @@ fn roll_recursive(
                     if roll_value < 0 {
                         return Err(RollError::NegativeRoll { value: roll_value });
                     }
-                    let roll_u32 = roll_value as u32;
+                    let roll_i32 = roll_value as i32;
 
                     let entry = results
                         .iter()
-                        .find(|e| roll_u32 >= e.min && roll_u32 <= e.max)
+                        .find(|e| roll_i32 >= e.min && roll_i32 <= e.max)
                         .ok_or_else(|| RollError::RollOutOfRange {
                             table: name.clone(),
                             value: roll_value,
                         })?;
 
-                    if reroll_values.contains(&roll_u32) {
+                    if reroll_values.contains(&(roll_i32 as u32)) {
                         attempts += 1;
                         if attempts >= MAX_REROLL_ATTEMPTS {
                             return Err(RollError::RerollExhausted {
@@ -105,7 +105,7 @@ fn roll_recursive(
                         continue;
                     }
 
-                    break (roll_u32, entry.clone());
+                    break (roll_i32, entry.clone());
                 }
             };
 
@@ -128,7 +128,7 @@ fn roll_recursive(
 
             Ok(RollResult {
                 table_name: name.clone(),
-                roll: Some(roll_u32),
+                roll: Some(roll_i32),
                 text,
                 children,
             })

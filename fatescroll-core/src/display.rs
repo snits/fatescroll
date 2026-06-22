@@ -29,9 +29,9 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
                 .iter()
                 .map(|r| {
                     if r.min == r.max {
-                        digit_count(r.min)
+                        format!("{}", r.min).len()
                     } else {
-                        digit_count(r.min) + 1 + digit_count(r.max)
+                        format!("{}-{}", r.min, r.max).len()
                     }
                 })
                 .max()
@@ -77,13 +77,6 @@ pub fn format_table(fqid: &str, table: &Table) -> String {
     }
 
     out
-}
-
-fn digit_count(n: u32) -> usize {
-    if n == 0 {
-        return 1;
-    }
-    n.ilog10() as usize + 1
 }
 
 #[cfg(test)]
@@ -226,5 +219,33 @@ mod tests {
 
         assert!(output.contains("Minimal (test.minimal)"));
         assert!(!output.contains("Tags:"));
+    }
+
+    #[test]
+    fn format_table_with_negative_entries_aligns() {
+        let table = Table::Simple {
+            id: "aging".into(),
+            name: "Aging".into(),
+            tags: vec![],
+            roll: "1d6".into(),
+            results: vec![
+                ResultEntry {
+                    min: -2,
+                    max: -1,
+                    text: Some("Decline".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 0,
+                    max: 6,
+                    text: Some("Stable".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let output = format_table("ns.aging", &table);
+        assert!(output.contains("-2--1"));
+        assert!(output.contains("Decline"));
+        assert!(output.contains("Stable"));
     }
 }

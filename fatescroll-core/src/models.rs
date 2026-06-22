@@ -47,8 +47,8 @@ impl ChainRef {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ResultEntry {
-    pub min: u32,
-    pub max: u32,
+    pub min: i32,
+    pub max: i32,
     pub text: Option<String>,
     pub chain: Option<Vec<ChainRef>>,
 }
@@ -125,7 +125,7 @@ pub struct Manifest {
 #[derive(Debug, Serialize, Clone)]
 pub struct RollResult {
     pub table_name: String,
-    pub roll: Option<u32>,
+    pub roll: Option<i32>,
     pub text: Option<String>,
     pub children: Vec<RollResult>,
 }
@@ -497,6 +497,31 @@ results:
         let table: Table = serde_yaml::from_str(yaml).unwrap();
         match table {
             Table::Simple { tags, .. } => assert!(tags.is_empty()),
+            _ => panic!("Expected Simple table"),
+        }
+    }
+
+    #[test]
+    fn deserialize_simple_table_with_negative_entries() {
+        let yaml = r#"
+id: aging
+name: Aging
+type: simple
+roll: 1d6
+results:
+  - min: -2
+    max: -1
+    text: Decline
+  - min: 0
+    max: 6
+    text: Stable
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match table {
+            Table::Simple { results, .. } => {
+                assert_eq!(results[0].min, -2);
+                assert_eq!(results[0].max, -1);
+            }
             _ => panic!("Expected Simple table"),
         }
     }
