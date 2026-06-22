@@ -98,13 +98,13 @@ fn validate_digit_dice_coverage(
     let valid_values: HashSet<u32> = crate::dice::digit_dice_values(sides, count)
         .into_iter()
         .collect();
-    let dice_min = *valid_values.iter().min().unwrap();
-    let dice_max = *valid_values.iter().max().unwrap();
+    let dice_min = *valid_values.iter().min().unwrap() as i32;
+    let dice_max = *valid_values.iter().max().unwrap() as i32;
 
     // Pre-check: every entry must only reference valid digit-dice values
     for entry in results {
         for v in entry.min..=entry.max {
-            if !valid_values.contains(&v) {
+            if v < 0 || !valid_values.contains(&(v as u32)) {
                 return Err(ValidationError::EntryOutOfRange {
                     table: name.to_string(),
                     entry_min: entry.min,
@@ -121,16 +121,18 @@ fn validate_digit_dice_coverage(
         valid_values.iter().map(|&v| (v, 0)).collect();
     for entry in results {
         for v in entry.min..=entry.max {
-            if let Some(count) = coverage.get_mut(&v) {
+            if v >= 0
+                && let Some(count) = coverage.get_mut(&(v as u32))
+            {
                 *count += 1;
             }
         }
     }
 
-    let mut missing: Vec<u32> = coverage
+    let mut missing: Vec<i32> = coverage
         .iter()
         .filter(|(_, c)| **c == 0)
-        .map(|(&v, _)| v)
+        .map(|(&v, _)| v as i32)
         .collect();
     missing.sort_unstable();
     if !missing.is_empty() {
@@ -140,10 +142,10 @@ fn validate_digit_dice_coverage(
         });
     }
 
-    let mut overlapping: Vec<u32> = coverage
+    let mut overlapping: Vec<i32> = coverage
         .iter()
         .filter(|(_, c)| **c > 1)
-        .map(|(&v, _)| v)
+        .map(|(&v, _)| v as i32)
         .collect();
     overlapping.sort_unstable();
     if !overlapping.is_empty() {
@@ -180,8 +182,8 @@ fn validate_contiguous_coverage(
             ),
         });
     }
-    let dice_min = sim.min as u32;
-    let dice_max = sim.max as u32;
+    let dice_min = sim.min as i32;
+    let dice_max = sim.max as i32;
 
     // Pre-check: every entry must fall within dice range
     for entry in results {
@@ -200,18 +202,18 @@ fn validate_contiguous_coverage(
     // must be covered exactly once
     let mut coverage = vec![0u32; (dice_max - dice_min + 1) as usize];
     for entry in results {
-        let start = entry.min.saturating_sub(dice_min) as usize;
-        let end = entry.max.saturating_sub(dice_min) as usize;
-        for i in start..=end.min(coverage.len() - 1) {
-            coverage[i] += 1;
+        let start = (entry.min - dice_min) as usize;
+        let end = (entry.max - dice_min) as usize;
+        for slot in coverage.iter_mut().take(end + 1).skip(start) {
+            *slot += 1;
         }
     }
 
-    let missing: Vec<u32> = coverage
+    let missing: Vec<i32> = coverage
         .iter()
         .enumerate()
         .filter(|(_, count)| **count == 0)
-        .map(|(i, _)| i as u32 + dice_min)
+        .map(|(i, _)| i as i32 + dice_min)
         .collect();
     if !missing.is_empty() {
         return Err(ValidationError::RangeGap {
@@ -220,11 +222,11 @@ fn validate_contiguous_coverage(
         });
     }
 
-    let overlapping: Vec<u32> = coverage
+    let overlapping: Vec<i32> = coverage
         .iter()
         .enumerate()
         .filter(|(_, count)| **count > 1)
-        .map(|(i, _)| i as u32 + dice_min)
+        .map(|(i, _)| i as i32 + dice_min)
         .collect();
     if !overlapping.is_empty() {
         return Err(ValidationError::RangeOverlap {
@@ -586,8 +588,8 @@ mod tests {
         let results: Vec<ResultEntry> = values
             .iter()
             .map(|&v| ResultEntry {
-                min: v,
-                max: v,
+                min: v as i32,
+                max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
             })
@@ -610,8 +612,8 @@ mod tests {
             .iter()
             .filter(|&&v| v != 35)
             .map(|&v| ResultEntry {
-                min: v,
-                max: v,
+                min: v as i32,
+                max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
             })
@@ -637,8 +639,8 @@ mod tests {
         let mut results: Vec<ResultEntry> = values
             .iter()
             .map(|&v| ResultEntry {
-                min: v,
-                max: v,
+                min: v as i32,
+                max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
             })

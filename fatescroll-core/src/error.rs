@@ -28,26 +28,26 @@ pub enum Error {
 #[derive(Debug, Error)]
 pub enum ValidationError {
     #[error("range reversed: min {min} > max {max} in table '{table}'")]
-    RangeReversed { table: String, min: u32, max: u32 },
+    RangeReversed { table: String, min: i32, max: i32 },
 
     #[error(
         "entry range [{entry_min}..{entry_max}] outside dice range [{dice_min}..{dice_max}] in table '{table}'"
     )]
     EntryOutOfRange {
         table: String,
-        entry_min: u32,
-        entry_max: u32,
-        dice_min: u32,
-        dice_max: u32,
+        entry_min: i32,
+        entry_max: i32,
+        dice_min: i32,
+        dice_max: i32,
     },
 
     #[error("range gap in table '{table}': missing values {missing:?}")]
-    RangeGap { table: String, missing: Vec<u32> },
+    RangeGap { table: String, missing: Vec<i32> },
 
     #[error("range overlap in table '{table}': values {overlapping:?} covered multiple times")]
     RangeOverlap {
         table: String,
-        overlapping: Vec<u32>,
+        overlapping: Vec<i32>,
     },
 
     #[error("invalid dice expression '{expr}' in table '{table}': {reason}")]
