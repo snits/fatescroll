@@ -37,6 +37,9 @@ enum Commands {
         collection: Option<PathBuf>,
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
         table_id: String,
+        /// Apply a roll modifier (requires the table to declare modifier_range)
+        #[arg(long, allow_negative_numbers = true)]
+        modifier: Option<i32>,
     },
     /// Search for tables
     Search {
@@ -185,7 +188,9 @@ fn main() {
         Commands::Roll {
             collection,
             table_id,
-        } => resolve_collection(collection).and_then(|collection| cmd_roll(&collection, &table_id)),
+            modifier,
+        } => resolve_collection(collection)
+            .and_then(|collection| cmd_roll(&collection, &table_id, modifier)),
         Commands::Search {
             collection,
             name,
@@ -301,9 +306,13 @@ fn cmd_validate(collection: &Path) -> Result<(), fatescroll_core::Error> {
     Ok(())
 }
 
-fn cmd_roll(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Error> {
+fn cmd_roll(
+    collection: &Path,
+    table_id: &str,
+    modifier: Option<i32>,
+) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
-    let result = fatescroll_core::roller::roll(&registry, table_id)?;
+    let result = fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?;
     print_roll_result(&result, 0);
     Ok(())
 }

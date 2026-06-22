@@ -1096,3 +1096,66 @@ fn search_by_namespace_no_results() {
         "Expected 'No tables found.' in output, got: {stdout}"
     );
 }
+
+#[test]
+fn roll_with_modifier_clamps_high() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("modifier-collection").to_string_lossy(),
+            "mod.shadowdark.carousing",
+            "--modifier",
+            "100",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("rolled 14"), "got: {stdout}");
+}
+
+#[test]
+fn roll_with_modifier_on_plain_table_errors() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.animal-type",
+            "--modifier",
+            "2",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("does not support a roll modifier"),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn roll_without_modifier_still_works() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("modifier-collection").to_string_lossy(),
+            "mod.traveller.aging",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Aging"), "got: {stdout}");
+}
