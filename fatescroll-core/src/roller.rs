@@ -22,7 +22,24 @@ pub fn roll_with_rng(
     table_id: &str,
     rng: &mut impl diceman::Rng,
 ) -> Result<RollResult, RollError> {
-    roll_recursive(registry, table_id, "", rng, 0, &[])
+    roll_recursive(registry, table_id, "", rng, 0, &[], None)
+}
+
+pub fn roll_with_modifier(
+    registry: &Registry,
+    table_id: &str,
+    modifier: Option<i32>,
+) -> Result<RollResult, RollError> {
+    roll_with_rng_modifier(registry, table_id, modifier, &mut diceman::FastRng::new())
+}
+
+pub fn roll_with_rng_modifier(
+    registry: &Registry,
+    table_id: &str,
+    modifier: Option<i32>,
+    rng: &mut impl diceman::Rng,
+) -> Result<RollResult, RollError> {
+    roll_recursive(registry, table_id, "", rng, 0, &[], modifier)
 }
 
 fn roll_recursive(
@@ -32,6 +49,7 @@ fn roll_recursive(
     rng: &mut impl diceman::Rng,
     depth: usize,
     reroll_values: &[u32],
+    modifier: Option<i32>,
 ) -> Result<RollResult, RollError> {
     if depth > MAX_CHAIN_DEPTH {
         return Err(RollError::ChainDepthExceeded {
@@ -66,9 +84,16 @@ fn roll_recursive(
             name,
             roll: roll_expr,
             results,
+            modifier_range,
             ..
         } => {
-            let (roll_i32, entry) = {
+            if modifier.is_some() && modifier_range.is_none() {
+                return Err(RollError::ModifierNotSupported {
+                    table: name.clone(),
+                });
+            }
+
+            let (lookup, entry) = {
                 let mut attempts = 0;
                 loop {
                     let dice_result = diceman::roll_with_rng(roll_expr, rng).map_err(|e| {
@@ -85,12 +110,27 @@ fn roll_recursive(
                     }
                     let roll_i32 = roll_value as i32;
 
+                    let lookup = match modifier_range {
+                        Some(_) => match (
+                            results.iter().map(|e| e.min).min(),
+                            results.iter().map(|e| e.max).max(),
+                        ) {
+                            (Some(entry_min), Some(entry_max)) => ((roll_i32 as i64)
+                                + (modifier.unwrap_or(0) as i64))
+                                .clamp(entry_min as i64, entry_max as i64)
+                                as i32,
+                            // Empty results: unreachable for validated tables; falls through to RollOutOfRange below (roller is public; don't .unwrap() the min/max).
+                            _ => roll_i32,
+                        },
+                        None => roll_i32,
+                    };
+
                     let entry = results
                         .iter()
-                        .find(|e| roll_i32 >= e.min && roll_i32 <= e.max)
+                        .find(|e| lookup >= e.min && lookup <= e.max)
                         .ok_or_else(|| RollError::RollOutOfRange {
                             table: name.clone(),
-                            value: roll_value,
+                            value: lookup as i64,
                         })?;
 
                     if reroll_values.contains(&(roll_i32 as u32)) {
@@ -105,7 +145,7 @@ fn roll_recursive(
                         continue;
                     }
 
-                    break (roll_i32, entry.clone());
+                    break (lookup, entry.clone());
                 }
             };
 
@@ -121,6 +161,7 @@ fn roll_recursive(
                         rng,
                         depth + 1,
                         chain_ref.reroll_values(),
+                        None,
                     )?;
                     children.push(child);
                 }
@@ -128,7 +169,7 @@ fn roll_recursive(
 
             Ok(RollResult {
                 table_name: name.clone(),
-                roll: Some(roll_i32),
+                roll: Some(lookup),
                 text,
                 children,
             })
@@ -138,9 +179,16 @@ fn roll_recursive(
             tables: sub_tables,
             ..
         } => {
+            if modifier.is_some() {
+                return Err(RollError::ModifierNotSupported {
+                    table: name.clone(),
+                });
+            }
+
             let mut children = Vec::new();
             for table_ref in sub_tables {
-                let child = roll_recursive(registry, table_ref, namespace, rng, depth + 1, &[])?;
+                let child =
+                    roll_recursive(registry, table_ref, namespace, rng, depth + 1, &[], None)?;
                 children.push(child);
             }
 
@@ -704,6 +752,171 @@ mod tests {
         let mut rng = diceman::FastRng::with_seed(42);
         let err = roll_with_rng(&reg, "ns.exhaust-parent", &mut rng).unwrap_err();
         assert!(matches!(err, RollError::RerollExhausted { .. }));
+    }
+
+    fn carousing_registry() -> Registry {
+        let mut reg = Registry::new();
+        let results = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("E{v}")),
+                chain: None,
+            })
+            .collect();
+        reg.register(
+            "ns.carousing".into(),
+            Table::Simple {
+                id: "carousing".into(),
+                name: "Carousing".into(),
+                tags: vec![],
+                roll: "1d8".into(),
+                modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+                results,
+            },
+        )
+        .unwrap();
+        reg
+    }
+
+    #[test]
+    fn modifier_shifts_lookup_value() {
+        let reg = carousing_registry();
+        let mut rng = diceman::FastRng::with_seed(7);
+        let raw = roll_with_rng_modifier(&reg, "ns.carousing", None, &mut rng)
+            .unwrap()
+            .roll
+            .unwrap();
+        let mut rng2 = diceman::FastRng::with_seed(7);
+        let modded = roll_with_rng_modifier(&reg, "ns.carousing", Some(3), &mut rng2)
+            .unwrap()
+            .roll
+            .unwrap();
+        assert_eq!(modded, raw + 3);
+    }
+
+    #[test]
+    fn modifier_clamps_overflow_high() {
+        let reg = carousing_registry();
+        for seed in 0..50 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let r = roll_with_rng_modifier(&reg, "ns.carousing", Some(100), &mut rng).unwrap();
+            assert_eq!(r.roll.unwrap(), 14);
+        }
+    }
+
+    #[test]
+    fn modifier_clamps_overflow_low() {
+        let reg = carousing_registry();
+        for seed in 0..50 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let r = roll_with_rng_modifier(&reg, "ns.carousing", Some(-100), &mut rng).unwrap();
+            assert_eq!(r.roll.unwrap(), 1);
+        }
+    }
+
+    #[test]
+    fn modifier_on_table_without_modifier_range_errors() {
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = roll_with_rng_modifier(&reg, "test.simple", Some(2), &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::ModifierNotSupported { .. }));
+    }
+
+    #[test]
+    fn modifier_on_compound_errors() {
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = roll_with_rng_modifier(&reg, "test.compound", Some(1), &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::ModifierNotSupported { .. }));
+    }
+
+    #[test]
+    fn modifier_does_not_leak_to_children() {
+        // Every parent entry chains, so the child is always rolled. If the parent's
+        // modifier leaked into the child (which declares no modifier_range), the
+        // child roll would error ModifierNotSupported and unwrap() would panic.
+        let mut reg = Registry::new();
+        let parent_results = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some("P".into()),
+                chain: Some(vec![ChainRef::Simple("child".into())]),
+            })
+            .collect();
+        reg.register(
+            "ns.parent".into(),
+            Table::Simple {
+                id: "parent".into(),
+                name: "Parent".into(),
+                tags: vec![],
+                roll: "1d8".into(),
+                modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+                results: parent_results,
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.child".into(),
+            Table::Simple {
+                id: "child".into(),
+                name: "Child".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("C".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        for seed in 0..100 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let r = roll_with_rng_modifier(&reg, "ns.parent", Some(6), &mut rng).unwrap();
+            assert_eq!(
+                r.children.len(),
+                1,
+                "seed {seed}: child should always be rolled"
+            );
+            let child = &r.children[0];
+            assert!(child.roll.unwrap() >= 1 && child.roll.unwrap() <= 6);
+        }
+    }
+
+    #[test]
+    fn validated_modifier_table_never_out_of_range() {
+        let reg = carousing_registry();
+        for seed in 0..500 {
+            for m in [-100, -6, 0, 6, 100] {
+                let mut rng = diceman::FastRng::with_seed(seed);
+                assert!(roll_with_rng_modifier(&reg, "ns.carousing", Some(m), &mut rng).is_ok());
+            }
+        }
+    }
+
+    #[test]
+    fn extreme_modifier_clamps_without_overflow() {
+        let reg = carousing_registry();
+        let mut rng = diceman::FastRng::with_seed(3);
+        assert_eq!(
+            roll_with_rng_modifier(&reg, "ns.carousing", Some(i32::MAX), &mut rng)
+                .unwrap()
+                .roll
+                .unwrap(),
+            14
+        );
+        let mut rng = diceman::FastRng::with_seed(3);
+        assert_eq!(
+            roll_with_rng_modifier(&reg, "ns.carousing", Some(i32::MIN), &mut rng)
+                .unwrap()
+                .roll
+                .unwrap(),
+            1
+        );
     }
 
     #[test]
