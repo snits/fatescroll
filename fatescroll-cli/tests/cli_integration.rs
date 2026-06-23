@@ -68,6 +68,30 @@ fn roll_on_table() {
 }
 
 #[test]
+fn roll_json_output() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.terrain.wilderness",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    assert_eq!(value["table_name"], "Wilderness Terrain");
+    assert!(value["roll"].is_number());
+    assert!(value["children"].is_array());
+}
+
+#[test]
 fn search_by_tag() {
     let output = fatescroll_bin()
         .args([
@@ -216,6 +240,91 @@ fn search_tags_conflicts_with_name() {
     assert!(
         stderr.contains("--tags") || stderr.contains("cannot be used with"),
         "Expected conflict error in stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn search_json_output() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--tag",
+            "npc",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    let hits = value.as_array().expect("expected a JSON array");
+    let hit = hits
+        .iter()
+        .find(|h| h["name"] == "NPC Occupation")
+        .expect("expected a hit named 'NPC Occupation'");
+    assert!(hit["id"].is_string(), "expected string id, got: {hit}");
+    let tags = hit["tags"].as_array().expect("expected tags array");
+    assert!(
+        tags.iter().any(|t| t == "npc"),
+        "expected tags to contain 'npc', got: {hit}"
+    );
+}
+
+#[test]
+fn search_tags_json_output() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--tags",
+            "--json",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    let tags = value.as_array().expect("expected a JSON array");
+    assert!(
+        tags.iter().any(|t| t == "npc"),
+        "expected tags array to contain 'npc', got: {value}"
+    );
+}
+
+#[test]
+fn search_json_no_results() {
+    let output = fatescroll_bin()
+        .args([
+            "search",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "--name",
+            "__no_such_table__",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    assert!(
+        value.as_array().unwrap().is_empty(),
+        "expected empty JSON array, got: {value}"
     );
 }
 
