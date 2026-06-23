@@ -61,6 +61,9 @@ enum Commands {
         /// List all unique tags in the collection
         #[arg(long, conflicts_with_all = ["name", "tag", "namespace"])]
         tags: bool,
+        /// Print results as JSON instead of the human-readable listing
+        #[arg(long)]
+        json: bool,
     },
     /// Display a table's contents
     Show {
@@ -201,6 +204,7 @@ fn main() {
             tag,
             namespace,
             tags,
+            json,
         } => resolve_collection(collection).and_then(|collection| {
             cmd_search(
                 &collection,
@@ -208,6 +212,7 @@ fn main() {
                 tag.as_deref(),
                 namespace.as_deref(),
                 tags,
+                json,
             )
         }),
         Commands::Show {
@@ -368,17 +373,28 @@ fn print_roll_result(result: &fatescroll_core::RollResult, indent: usize) {
     }
 }
 
+#[derive(serde::Serialize)]
+struct SearchHit<'a> {
+    id: &'a str,
+    name: &'a str,
+    tags: Vec<&'a str>,
+}
+
 fn cmd_search(
     collection: &Path,
     name: Option<&str>,
     tag: Option<&str>,
     namespace: Option<&str>,
     tags: bool,
+    json: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
 
     if tags {
         let all_tags = fatescroll_core::search::collect_tags(&registry);
+        if json {
+            return print_json(&all_tags);
+        }
         if all_tags.is_empty() {
             println!("No tags found.");
         } else {
@@ -402,6 +418,18 @@ fn cmd_search(
         )
         .into());
     };
+
+    if json {
+        let hits: Vec<SearchHit> = results
+            .iter()
+            .map(|&(fqid, table)| SearchHit {
+                id: fqid,
+                name: table.name(),
+                tags: table.tags().iter().map(|s| s.as_str()).collect(),
+            })
+            .collect();
+        return print_json(&hits);
+    }
 
     if results.is_empty() {
         println!("No tables found.");
