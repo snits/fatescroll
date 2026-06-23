@@ -6,21 +6,31 @@ use std::collections::BTreeSet;
 use crate::models::Table;
 use crate::registry::Registry;
 
+/// Sort search results by FQID ascending for stable, deterministic output.
+fn sort_by_fqid<'a>(mut results: Vec<(&'a str, &'a Table)>) -> Vec<(&'a str, &'a Table)> {
+    results.sort_by(|a, b| a.0.cmp(b.0));
+    results
+}
+
 /// Search by table name (case-insensitive substring match).
 pub fn search_by_name<'a>(registry: &'a Registry, query: &str) -> Vec<(&'a str, &'a Table)> {
     let query_lower = query.to_lowercase();
-    registry
-        .all_tables()
-        .filter(|(_, table)| table.name().to_lowercase().contains(&query_lower))
-        .collect()
+    sort_by_fqid(
+        registry
+            .all_tables()
+            .filter(|(_, table)| table.name().to_lowercase().contains(&query_lower))
+            .collect(),
+    )
 }
 
 /// Search by tag (exact match).
 pub fn search_by_tag<'a>(registry: &'a Registry, tag: &str) -> Vec<(&'a str, &'a Table)> {
-    registry
-        .all_tables()
-        .filter(|(_, table)| table.tags().iter().any(|t| t == tag))
-        .collect()
+    sort_by_fqid(
+        registry
+            .all_tables()
+            .filter(|(_, table)| table.tags().iter().any(|t| t == tag))
+            .collect(),
+    )
 }
 
 /// Search by namespace prefix (FQID starts with the given namespace).
@@ -33,10 +43,12 @@ pub fn search_by_namespace<'a>(
     } else {
         format!("{namespace}.")
     };
-    registry
-        .all_tables()
-        .filter(|(fqid, _)| fqid.starts_with(&prefix))
-        .collect()
+    sort_by_fqid(
+        registry
+            .all_tables()
+            .filter(|(fqid, _)| fqid.starts_with(&prefix))
+            .collect(),
+    )
 }
 
 /// Collect all unique tags across all tables, sorted alphabetically.
@@ -178,5 +190,71 @@ mod tests {
             tags.iter().copied().collect::<Vec<_>>(),
             vec!["encounter", "gems", "npc", "treasure", "wilderness"]
         );
+    }
+
+    fn make_simple_table(id: &str) -> Table {
+        Table::Simple {
+            id: id.into(),
+            name: id.into(),
+            tags: vec!["zzz-tag".into()],
+            notes: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("result".into()),
+                chain: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn search_results_are_sorted_by_fqid() {
+        // Register 5 tables in a deliberately scrambled order to expose HashMap non-determinism.
+        // The search functions must return them sorted by FQID regardless of insertion order.
+        let mut reg = Registry::new();
+        reg.register("zzz.echo".into(), make_simple_table("echo"))
+            .unwrap();
+        reg.register("zzz.alpha".into(), make_simple_table("alpha"))
+            .unwrap();
+        reg.register("zzz.delta".into(), make_simple_table("delta"))
+            .unwrap();
+        reg.register("zzz.bravo".into(), make_simple_table("bravo"))
+            .unwrap();
+        reg.register("zzz.charlie".into(), make_simple_table("charlie"))
+            .unwrap();
+
+        let expected = vec![
+            "zzz.alpha",
+            "zzz.bravo",
+            "zzz.charlie",
+            "zzz.delta",
+            "zzz.echo",
+        ];
+
+        let by_ns: Vec<&str> = search_by_namespace(&reg, "zzz")
+            .iter()
+            .map(|(fqid, _)| *fqid)
+            .collect();
+        assert_eq!(
+            by_ns, expected,
+            "search_by_namespace must be sorted by FQID"
+        );
+
+        let by_name: Vec<&str> = search_by_name(&reg, "")
+            .iter()
+            .map(|(fqid, _)| *fqid)
+            .collect();
+        // search_by_name with empty query matches all tables, but we only have zzz.* here
+        // so the filtered set is the same 5; order must be sorted.
+        // NOTE: build_search_registry tables have no "zzz" namespace, so this reg is isolated.
+        assert_eq!(by_name, expected, "search_by_name must be sorted by FQID");
+
+        let by_tag: Vec<&str> = search_by_tag(&reg, "zzz-tag")
+            .iter()
+            .map(|(fqid, _)| *fqid)
+            .collect();
+        assert_eq!(by_tag, expected, "search_by_tag must be sorted by FQID");
     }
 }
