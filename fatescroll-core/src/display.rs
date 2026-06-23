@@ -6,12 +6,16 @@ use std::fmt::Write;
 use crate::models::Table;
 
 /// Write a `Notes:` block when notes should be shown and exist.
-fn render_notes(out: &mut String, show_notes: bool, notes: &[String]) {
+/// Returns whether the block was written.
+fn render_notes(out: &mut String, show_notes: bool, notes: &[String]) -> bool {
     if show_notes && !notes.is_empty() {
         writeln!(out, "Notes:").unwrap();
         for note in notes {
             writeln!(out, "  - {note}").unwrap();
         }
+        true
+    } else {
+        false
     }
 }
 
@@ -89,8 +93,7 @@ pub fn format_table(fqid: &str, table: &Table, show_notes: bool) -> String {
             if !tags.is_empty() {
                 writeln!(out, "Tags: {}", tags.join(", ")).unwrap();
             }
-            render_notes(&mut out, show_notes, notes);
-            if show_notes && !notes.is_empty() {
+            if render_notes(&mut out, show_notes, notes) {
                 writeln!(out).unwrap();
             }
             writeln!(out, "Tables:").unwrap();
@@ -406,5 +409,32 @@ mod tests {
         assert!(output.contains("- Combine occupation and disposition into one line"));
         // Notes block precedes the Tables: list.
         assert!(output.find("Notes:").unwrap() < output.find("Tables:").unwrap());
+    }
+
+    #[test]
+    fn format_compound_table_hides_notes_by_default() {
+        let table = Table::Compound {
+            id: "quick-npc".into(),
+            name: "Quick NPC".into(),
+            tags: vec![],
+            notes: vec!["Combine occupation and disposition into one line".into()],
+            tables: vec!["npc-occupation".into(), "npc-disposition".into()],
+        };
+        let output = format_table("ns.quick-npc", &table, false);
+        assert!(!output.contains("Notes:"));
+        assert!(!output.contains("Combine occupation"));
+    }
+
+    #[test]
+    fn format_compound_table_without_notes_omits_block_even_when_requested() {
+        let table = Table::Compound {
+            id: "quick-npc".into(),
+            name: "Quick NPC".into(),
+            tags: vec![],
+            notes: vec![],
+            tables: vec!["npc-occupation".into(), "npc-disposition".into()],
+        };
+        let output = format_table("ns.quick-npc", &table, true);
+        assert!(!output.contains("Notes:"));
     }
 }
