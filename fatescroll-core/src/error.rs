@@ -157,4 +157,7 @@ pub enum RollError {
         "table '{table}' does not support a roll modifier (no modifier_range declared, or it is a compound table)"
     )]
     ModifierNotSupported { table: String },
+
+    #[error("table '{table}' does not support direct value lookup (it is a compound table)")]
+    DirectValueNotSupported { table: String },
 }
