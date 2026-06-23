@@ -110,6 +110,9 @@ fn roll_recursive(
                     }
                     let roll_i32 = match checked_total_to_i32(roll_value) {
                         Some(v) => v,
+                        // A total outside i32 range matches no entry; reuse
+                        // RollOutOfRange (its value field is i64) rather than a
+                        // dedicated variant.
                         None => {
                             return Err(RollError::RollOutOfRange {
                                 table: name.clone(),
@@ -945,12 +948,15 @@ mod tests {
     fn checked_total_to_i32_in_range() {
         assert_eq!(checked_total_to_i32(0), Some(0));
         assert_eq!(checked_total_to_i32(i32::MAX as i64), Some(i32::MAX));
+        assert_eq!(checked_total_to_i32(i32::MIN as i64), Some(i32::MIN));
     }
 
     #[test]
     fn checked_total_to_i32_out_of_range() {
         assert_eq!(checked_total_to_i32(i32::MAX as i64 + 1), None);
         assert_eq!(checked_total_to_i32(i64::MAX), None);
+        assert_eq!(checked_total_to_i32(i32::MIN as i64 - 1), None);
+        assert_eq!(checked_total_to_i32(i64::MIN), None);
     }
 
     #[test]
