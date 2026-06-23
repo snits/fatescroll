@@ -169,6 +169,8 @@ dependencies = [
  "cargo-husky",
  "clap",
  "fatescroll-core",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
