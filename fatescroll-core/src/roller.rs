@@ -330,6 +330,7 @@ mod tests {
                 id: "simple".into(),
                 name: "Simple Test".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![
@@ -356,6 +357,7 @@ mod tests {
                 id: "chained".into(),
                 name: "Chained".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![
@@ -382,6 +384,7 @@ mod tests {
                 id: "compound".into(),
                 name: "Compound Test".into(),
                 tags: vec![],
+                notes: vec![],
                 tables: vec!["simple".into()],
             },
         )
@@ -393,6 +396,7 @@ mod tests {
                 id: "interpolated".into(),
                 name: "Interpolated".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -448,6 +452,7 @@ mod tests {
                 id: "parent".into(),
                 name: "Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -465,6 +470,7 @@ mod tests {
                 id: "child".into(),
                 name: "Child".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -504,6 +510,7 @@ mod tests {
                 id: "a".into(),
                 name: "A".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -521,6 +528,7 @@ mod tests {
                 id: "b".into(),
                 name: "B".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -547,6 +555,7 @@ mod tests {
                 id: "negative".into(),
                 name: "Negative".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4-10".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -573,6 +582,7 @@ mod tests {
                 id: "gap".into(),
                 name: "Gap".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -599,6 +609,7 @@ mod tests {
                 id: "baddice".into(),
                 name: "BadDice".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "not_a_dice_expr".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -625,6 +636,7 @@ mod tests {
                 id: "fallback".into(),
                 name: "Fallback".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -657,6 +669,7 @@ mod tests {
                 id: "notext".into(),
                 name: "NoText".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -683,6 +696,7 @@ mod tests {
                 id: "reroll-parent".into(),
                 name: "Reroll Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![
@@ -711,6 +725,7 @@ mod tests {
                 id: "reroll-target".into(),
                 name: "Reroll Target".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![
@@ -753,6 +768,7 @@ mod tests {
                 id: "multi".into(),
                 name: "MultiChain".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -773,6 +789,7 @@ mod tests {
                 id: "child_a".into(),
                 name: "Child A".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -790,6 +807,7 @@ mod tests {
                 id: "child_b".into(),
                 name: "Child B".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -818,6 +836,7 @@ mod tests {
                 id: "exhaust-parent".into(),
                 name: "Exhaust Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -838,6 +857,7 @@ mod tests {
                 id: "exhaust-target".into(),
                 name: "Exhaust Target".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -871,6 +891,7 @@ mod tests {
                 id: "carousing".into(),
                 name: "Carousing".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d8".into(),
                 modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
                 results,
@@ -952,6 +973,7 @@ mod tests {
                 id: "parent".into(),
                 name: "Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d8".into(),
                 modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
                 results: parent_results,
@@ -964,6 +986,7 @@ mod tests {
                 id: "child".into(),
                 name: "Child".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -1086,6 +1109,7 @@ mod tests {
                 id: "boarding".into(),
                 name: "Boarding Action".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d8".into(),
                 modifier_range: None,
                 results,
@@ -1148,6 +1172,7 @@ mod tests {
                 id: "parent".into(),
                 name: "Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d14".into(),
                 modifier_range: None,
                 results: parent_results,
@@ -1160,6 +1185,7 @@ mod tests {
                 id: "child".into(),
                 name: "Child".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -1185,6 +1211,34 @@ mod tests {
     }
 
     #[test]
+    fn roller_ignores_notes() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.noted".into(),
+            Table::Simple {
+                id: "noted".into(),
+                name: "Noted".into(),
+                tags: vec![],
+                notes: vec!["This note must not affect rolling".into()],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Only outcome".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "ns.noted", &mut rng).unwrap();
+        assert_eq!(result.table_name, "Noted");
+        assert_eq!(result.text.as_deref(), Some("Only outcome"));
+    }
+
+    #[test]
     fn self_referential_chain_with_reroll() {
         let mut reg = Registry::new();
         reg.register(
@@ -1193,6 +1247,7 @@ mod tests {
                 id: "mishap".into(),
                 name: "Wizard Mishap".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d4".into(),
                 modifier_range: None,
                 results: vec![
