@@ -101,6 +101,11 @@ pub enum ValidationError {
         "modifier_range produces an unusable envelope (width {width}, max {max}) in table '{table}'"
     )]
     ModifierRangeTooWide { table: String, width: i64, max: i64 },
+
+    #[error(
+        "dice expression produces an outcome envelope too wide to validate (width {width}, max {max}) in table '{table}'"
+    )]
+    DiceRangeTooWide { table: String, width: i64, max: i64 },
 }
 
 #[derive(Debug, Error)]
