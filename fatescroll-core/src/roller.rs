@@ -108,7 +108,18 @@ fn roll_recursive(
                     if roll_value < 0 {
                         return Err(RollError::NegativeRoll { value: roll_value });
                     }
-                    let roll_i32 = roll_value as i32;
+                    let roll_i32 = match checked_total_to_i32(roll_value) {
+                        Some(v) => v,
+                        // A total outside i32 range matches no entry; reuse
+                        // RollOutOfRange (its value field is i64) rather than a
+                        // dedicated variant.
+                        None => {
+                            return Err(RollError::RollOutOfRange {
+                                table: name.clone(),
+                                value: roll_value,
+                            });
+                        }
+                    };
 
                     let lookup = match modifier_range {
                         Some(_) => match (
@@ -207,6 +218,13 @@ fn roll_recursive(
             })
         }
     }
+}
+
+/// Narrow an i64 dice total to i32, returning `None` when it falls outside the
+/// i32 range. Entries and lookups are i32, so an out-of-range total matches no
+/// entry and is reported as `RollOutOfRange` by the caller.
+fn checked_total_to_i32(total: i64) -> Option<i32> {
+    i32::try_from(total).ok()
 }
 
 fn interpolate_dice(text: &str, rng: &mut impl diceman::Rng) -> String {
@@ -924,6 +942,21 @@ mod tests {
                 .unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn checked_total_to_i32_in_range() {
+        assert_eq!(checked_total_to_i32(0), Some(0));
+        assert_eq!(checked_total_to_i32(i32::MAX as i64), Some(i32::MAX));
+        assert_eq!(checked_total_to_i32(i32::MIN as i64), Some(i32::MIN));
+    }
+
+    #[test]
+    fn checked_total_to_i32_out_of_range() {
+        assert_eq!(checked_total_to_i32(i32::MAX as i64 + 1), None);
+        assert_eq!(checked_total_to_i32(i64::MAX), None);
+        assert_eq!(checked_total_to_i32(i32::MIN as i64 - 1), None);
+        assert_eq!(checked_total_to_i32(i64::MIN), None);
     }
 
     #[test]
