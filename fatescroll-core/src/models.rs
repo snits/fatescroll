@@ -84,6 +84,8 @@ pub enum Table {
         name: String,
         #[serde(default)]
         tags: Vec<String>,
+        #[serde(default)]
+        notes: Vec<String>,
         roll: String,
         #[serde(default)]
         modifier_range: Option<ModifierRange>,
@@ -95,6 +97,8 @@ pub enum Table {
         name: String,
         #[serde(default)]
         tags: Vec<String>,
+        #[serde(default)]
+        notes: Vec<String>,
         tables: Vec<String>,
     },
 }
@@ -115,6 +119,12 @@ impl Table {
     pub fn tags(&self) -> &[String] {
         match self {
             Table::Simple { tags, .. } | Table::Compound { tags, .. } => tags,
+        }
+    }
+
+    pub fn notes(&self) -> &[String] {
+        match self {
+            Table::Simple { notes, .. } | Table::Compound { notes, .. } => notes,
         }
     }
 }
@@ -186,6 +196,7 @@ mod tests {
             id: "encounter".into(),
             name: "Encounter".into(),
             tags: vec!["test".into()],
+            notes: vec![],
             roll: "1d4".into(),
             modifier_range: None,
             results: vec![ResultEntry {
@@ -217,6 +228,7 @@ mod tests {
             id: "t".into(),
             name: "T".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![ResultEntry {
@@ -236,6 +248,7 @@ mod tests {
             id: "quick-npc".into(),
             name: "Quick NPC".into(),
             tags: vec!["npc".into()],
+            notes: vec![],
             tables: vec!["npc-occupation".into(), "npc-disposition".into()],
         };
         let v1 = serde_json::to_value(&table).unwrap();
@@ -342,11 +355,13 @@ tables:
                 id,
                 name,
                 tags,
+                notes,
                 tables,
             } => {
                 assert_eq!(id, "quick-npc");
                 assert_eq!(name, "Quick NPC");
                 assert_eq!(tags, vec!["npc", "generator"]);
+                assert!(notes.is_empty());
                 assert_eq!(
                     tables,
                     vec!["npc-occupation", "npc-disposition", "npc-quirk"]
@@ -604,5 +619,74 @@ results:
         assert!(v.is_array(), "expected sequence form, got: {v}");
         let back: ModifierRange = serde_json::from_value(v).unwrap();
         assert_eq!(back, mr);
+    }
+
+    #[test]
+    fn deserialize_simple_table_with_notes() {
+        let yaml = r#"
+id: boarding
+name: Boarding
+type: simple
+roll: 2d6
+notes:
+  - "Attacker rolls 2d6 minus defender 2d6"
+  - "DMs: +2 boarding equipment, -1 per 1000 tons difference"
+results:
+  - min: 1
+    max: 12
+    text: Outcome
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            table.notes(),
+            &[
+                "Attacker rolls 2d6 minus defender 2d6".to_string(),
+                "DMs: +2 boarding equipment, -1 per 1000 tons difference".to_string(),
+            ]
+        );
+        // Lock that notes serialize (no skip_serializing_if): round-trip through JSON.
+        let v = serde_json::to_value(&table).unwrap();
+        assert_eq!(
+            v["notes"],
+            serde_json::json!([
+                "Attacker rolls 2d6 minus defender 2d6",
+                "DMs: +2 boarding equipment, -1 per 1000 tons difference"
+            ])
+        );
+    }
+
+    #[test]
+    fn notes_absent_defaults_to_empty() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    text: X
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        assert!(table.notes().is_empty());
+    }
+
+    #[test]
+    fn compound_table_carries_notes() {
+        let yaml = r#"
+id: quick-npc
+name: Quick NPC
+type: compound
+notes:
+  - "Combine occupation and disposition into one line"
+tables:
+  - npc-occupation
+  - npc-disposition
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(
+            table.notes(),
+            &["Combine occupation and disposition into one line".to_string()]
+        );
     }
 }

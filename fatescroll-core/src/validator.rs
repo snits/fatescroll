@@ -406,6 +406,7 @@ mod tests {
             id: "test".into(),
             name: "Test".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![
@@ -432,6 +433,7 @@ mod tests {
             id: "gappy".into(),
             name: "Gappy".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![
@@ -462,6 +464,7 @@ mod tests {
             id: "overlapping".into(),
             name: "Overlapping".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![
@@ -492,6 +495,7 @@ mod tests {
             id: "bad-dice".into(),
             name: "BadDice".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1z6".into(),
             modifier_range: None,
             results: vec![ResultEntry {
@@ -514,6 +518,7 @@ mod tests {
             id: "below".into(),
             name: "Below".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(), // range 1-6
             modifier_range: None,
             results: vec![
@@ -541,6 +546,7 @@ mod tests {
             id: "above".into(),
             name: "Above".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(), // range 1-6
             modifier_range: None,
             results: vec![
@@ -582,6 +588,7 @@ mod tests {
                     id: "broken".into(),
                     name: "Broken".into(),
                     tags: vec![],
+                    notes: vec![],
                     roll: "1d4".into(),
                     modifier_range: None,
                     results: vec![
@@ -620,6 +627,7 @@ mod tests {
                     id: "bad-compound".into(),
                     name: "Bad Compound".into(),
                     tags: vec![],
+                    notes: vec![],
                     tables: vec!["nonexistent-a".into(), "nonexistent-b".into()],
                 },
             )
@@ -635,6 +643,7 @@ mod tests {
             id: "negative".into(),
             name: "Negative".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d4-3".into(), // range -2 to 1
             modifier_range: None,
             results: vec![ResultEntry {
@@ -665,6 +674,7 @@ mod tests {
             id: "d66-full".into(),
             name: "D66 Full".into(),
             tags: vec![],
+            notes: vec![],
             roll: "D66".into(),
             modifier_range: None,
             results,
@@ -690,6 +700,7 @@ mod tests {
             id: "d66-gap".into(),
             name: "D66 Gap".into(),
             tags: vec![],
+            notes: vec![],
             roll: "D66".into(),
             modifier_range: None,
             results,
@@ -725,6 +736,7 @@ mod tests {
             id: "d66-invalid".into(),
             name: "D66 Invalid".into(),
             tags: vec![],
+            notes: vec![],
             roll: "D66".into(),
             modifier_range: None,
             results,
@@ -750,6 +762,7 @@ mod tests {
             id: "carousing".into(),
             name: "Carousing".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
             results,
@@ -771,6 +784,7 @@ mod tests {
             id: "aging".into(),
             name: "Aging".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: Some(crate::models::ModifierRange { min: -6, max: 0 }),
             results,
@@ -792,6 +806,7 @@ mod tests {
             id: "carousing".into(),
             name: "Carousing".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
             results,
@@ -821,6 +836,7 @@ mod tests {
             id: "carousing".into(),
             name: "Carousing".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
             results,
@@ -836,6 +852,7 @@ mod tests {
             id: "bad".into(),
             name: "Bad".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 6, max: 0 }),
             results: vec![ResultEntry {
@@ -856,6 +873,7 @@ mod tests {
             id: "d66".into(),
             name: "D66".into(),
             tags: vec![],
+            notes: vec![],
             roll: "D66".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 1 }),
             results: vec![ResultEntry {
@@ -876,6 +894,7 @@ mod tests {
             id: "kh".into(),
             name: "KH".into(),
             tags: vec![],
+            notes: vec![],
             roll: "4d6kh3".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 1 }),
             results: vec![ResultEntry {
@@ -893,6 +912,7 @@ mod tests {
             id: "huge".into(),
             name: "Huge".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange {
                 min: 0,
@@ -917,6 +937,7 @@ mod tests {
             id: "edge".into(),
             name: "Edge".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange {
                 min: i32::MAX - 10,
@@ -941,6 +962,7 @@ mod tests {
             id: "compound".into(),
             name: "Compound".into(),
             tags: vec![],
+            notes: vec![],
             tables: vec!["a".into(), "b".into()],
         };
         // Per-type validation for compound tables always passes
@@ -958,6 +980,7 @@ mod tests {
             id: "wide".into(),
             name: "Wide".into(),
             tags: vec![],
+            notes: vec![],
             roll: format!("1d{sides}"),
             modifier_range: None,
             results: vec![ResultEntry {

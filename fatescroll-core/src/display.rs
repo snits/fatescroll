@@ -93,6 +93,7 @@ mod tests {
             id: "wilderness-encounter".into(),
             name: "Wilderness Encounter".into(),
             tags: vec!["encounter".into(), "wilderness".into()],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: None,
             results: vec![
@@ -132,6 +133,7 @@ mod tests {
             id: "quick-npc".into(),
             name: "Quick NPC Generator".into(),
             tags: vec!["npc".into(), "generator".into()],
+            notes: vec![],
             tables: vec![
                 "npc-occupation".into(),
                 "npc-disposition".into(),
@@ -176,6 +178,7 @@ mod tests {
             id: "mishap".into(),
             name: "Wizard Mishap".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d4".into(),
             modifier_range: None,
             results: vec![
@@ -213,6 +216,7 @@ mod tests {
             id: "minimal".into(),
             name: "Minimal".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d4".into(),
             modifier_range: None,
             results: vec![ResultEntry {
@@ -234,6 +238,7 @@ mod tests {
             id: "carousing".into(),
             name: "Carousing".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d8".into(),
             modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
             results: (1..=14)
@@ -255,6 +260,7 @@ mod tests {
             id: "plain".into(),
             name: "Plain".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![ResultEntry {
@@ -274,6 +280,7 @@ mod tests {
             id: "aging".into(),
             name: "Aging".into(),
             tags: vec![],
+            notes: vec![],
             roll: "1d6".into(),
             modifier_range: None,
             results: vec![
