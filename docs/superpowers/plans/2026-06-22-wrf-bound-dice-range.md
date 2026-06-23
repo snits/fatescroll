@@ -63,6 +63,8 @@ Add to the `#[cfg(test)] mod tests` block in `validator.rs`:
 #[test]
 fn bounded_envelope_accepts_normal_width() {
     assert_eq!(bounded_envelope(1, 6), Ok((1, 6)));
+    // exact cap boundary: width == MAX_ENVELOPE_WIDTH is accepted (guard is `>`)
+    assert_eq!(bounded_envelope(0, MAX_ENVELOPE_WIDTH), Ok((0, 100_000)));
 }
 
 #[test]
@@ -93,6 +95,8 @@ Immediately after the `MAX_ENVELOPE_WIDTH` const (~line 17) in `validator.rs`:
 /// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
 /// wide to allocate a coverage vec for, or whose endpoints fall outside i32.
 /// On rejection returns the offending `width` (`Err`) for the caller's error.
+/// Callers pass non-overflowing i64 endpoints (i32-derived or non-negative),
+/// so `max - min` cannot overflow.
 fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
     let width = max - min;
     if width > MAX_ENVELOPE_WIDTH || min < i32::MIN as i64 || max > i32::MAX as i64 {
@@ -126,38 +130,19 @@ In `validate_table`, replace the modifier-branch width check (currently lines ~1
                     }
 ```
 
-- [ ] **Step 6: Rewire the non-modifier branch to use the helper**
+- [ ] **Step 6: Write the failing validator-level test for the non-modifier cap (RED FIRST)**
 
-In the same `match modifier_range`, replace the `None` branch tail `(sim.min as i32, sim.max as i32)` (currently line ~137) with:
-
-```rust
-                    match bounded_envelope(sim.min, sim.max) {
-                        Ok(pair) => pair,
-                        Err(width) => {
-                            return Err(ValidationError::DiceRangeTooWide {
-                                table: name.clone(),
-                                width,
-                                max: MAX_ENVELOPE_WIDTH,
-                            });
-                        }
-                    }
-```
-
-Leave the preceding `if sim.min < 0 || sim.max < 0 { ... }` check intact.
-
-- [ ] **Step 7: Write a failing validator-level test for the non-modifier cap**
-
-Add to `#[cfg(test)] mod tests` in `validator.rs`. Match the exact `Table::Simple`
-field set used by existing tests like `entry_above_dice_max` (`id`, `name`, `tags`,
-`roll`, `modifier_range`, `results`):
+Write this test BEFORE rewiring the non-modifier branch, so it observes a genuine
+red. Add to `#[cfg(test)] mod tests` in `validator.rs`. Match the exact
+`Table::Simple` field set used by existing tests like `entry_above_dice_max`
+(`id`, `name`, `tags`, `roll`, `modifier_range`, `results`):
 
 ```rust
 #[test]
 fn non_modifier_dice_range_too_wide_is_rejected() {
     // 1dN with N well past MAX_ENVELOPE_WIDTH: a single entry covers the whole
-    // span, so per-entry checks pass and the width guard must fire BEFORE the
-    // coverage-vec allocation. Over 100_000 seeded samples of 1d400000 the
-    // observed span is ~400k, comfortably above the 100k cap.
+    // span. Over 100_000 seeded samples of 1d400000 the observed span is ~400k,
+    // comfortably above the 100k cap, so the width guard must reject it.
     let sides = MAX_ENVELOPE_WIDTH * 4; // 400_000
     let table = Table::Simple {
         id: "wide".into(),
@@ -180,14 +165,40 @@ fn non_modifier_dice_range_too_wide_is_rejected() {
 }
 ```
 
-- [ ] **Step 8: Run it to verify it fails, then passes**
+- [ ] **Step 7: Run it to verify it fails (genuine red)**
 
 Run: `cargo test -p fatescroll-core --lib non_modifier_dice_range_too_wide`
-Expected: with Steps 5-6 already applied, this PASSES. (If you wrote the test before Steps 5-6, it would FAIL with a coverage error / slow alloc — that is the red state.)
+Expected: FAIL. Before the non-modifier rewire, the observed envelope is
+`(~4, ~399999)`; the entry `min: 1` is below `envelope_min`, so
+`validate_envelope_coverage` returns `EntryOutOfRange` *before* it allocates the
+coverage vec. The assert sees `EntryOutOfRange`, not `DiceRangeTooWide`, and
+fails — a fast, safe red (no 4 GB allocation).
 
-- [ ] **Step 9: Run the full core suite + clippy/fmt**
+- [ ] **Step 8: Rewire the non-modifier branch to use the helper (GREEN)**
 
-Run: `cargo test -p fatescroll-core && cargo clippy -p fatescroll-core -- -D warnings && cargo fmt --check`
+In the same `match modifier_range`, replace the `None` branch tail `(sim.min as i32, sim.max as i32)` (currently line ~137) with:
+
+```rust
+                    match bounded_envelope(sim.min, sim.max) {
+                        Ok(pair) => pair,
+                        Err(width) => {
+                            return Err(ValidationError::DiceRangeTooWide {
+                                table: name.clone(),
+                                width,
+                                max: MAX_ENVELOPE_WIDTH,
+                            });
+                        }
+                    }
+```
+
+Leave the preceding `if sim.min < 0 || sim.max < 0 { ... }` check intact.
+
+- [ ] **Step 9: Run it to verify it passes, then the full core suite + clippy/fmt**
+
+Run: `cargo test -p fatescroll-core --lib non_modifier_dice_range_too_wide` → PASS
+(now `bounded_envelope` rejects the wide envelope and `DiceRangeTooWide` fires
+before allocation).
+Then: `cargo test -p fatescroll-core && cargo clippy -p fatescroll-core -- -D warnings && cargo fmt --check`
 Expected: all green. Existing `ModifierRangeTooWide` tests still pass (message/variant unchanged).
 
 - [ ] **Step 10: Commit**
