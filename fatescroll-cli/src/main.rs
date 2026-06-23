@@ -43,6 +43,11 @@ enum Commands {
         /// Print the result as JSON instead of the human-readable tree
         #[arg(long)]
         json: bool,
+        /// Look up a value directly instead of rolling dice (skips the roll, then
+        /// runs the rest of the pipeline). Out-of-range values error rather than
+        /// clamp; not valid for compound tables
+        #[arg(long, allow_negative_numbers = true, conflicts_with = "modifier")]
+        value: Option<i32>,
     },
     /// Search for tables
     Search {
@@ -196,8 +201,9 @@ fn main() {
             table_id,
             modifier,
             json,
+            value,
         } => resolve_collection(collection)
-            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, json)),
+            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, value, json)),
         Commands::Search {
             collection,
             name,
@@ -319,10 +325,15 @@ fn cmd_roll(
     collection: &Path,
     table_id: &str,
     modifier: Option<i32>,
+    value: Option<i32>,
     json: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
-    let result = fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?;
+    // clap guarantees --value and --modifier are mutually exclusive.
+    let result = match value {
+        Some(value) => fatescroll_core::roller::roll_with_value(&registry, table_id, value)?,
+        None => fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?,
+    };
     if json {
         print_json(&result)?;
     } else {

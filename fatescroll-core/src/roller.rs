@@ -13,6 +13,18 @@ const MAX_REROLL_ATTEMPTS: usize = 100;
 
 static DICE_INTERPOLATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
+/// How the top-level lookup value for a table is determined.
+///
+/// `Dice` rolls the table's expression (optionally shifting by a modifier);
+/// `Direct` skips rolling and looks up a caller-supplied value. Only the
+/// top-level call carries the caller's choice — chained children are always
+/// rolled (`Dice { modifier: None }`).
+#[derive(Clone, Copy)]
+enum Lookup {
+    Dice { modifier: Option<i32> },
+    Direct(i32),
+}
+
 pub fn roll(registry: &Registry, table_id: &str) -> Result<RollResult, RollError> {
     roll_with_rng(registry, table_id, &mut diceman::FastRng::new())
 }
@@ -22,7 +34,15 @@ pub fn roll_with_rng(
     table_id: &str,
     rng: &mut impl diceman::Rng,
 ) -> Result<RollResult, RollError> {
-    roll_recursive(registry, table_id, "", rng, 0, &[], None)
+    roll_recursive(
+        registry,
+        table_id,
+        "",
+        rng,
+        0,
+        &[],
+        Lookup::Dice { modifier: None },
+    )
 }
 
 pub fn roll_with_modifier(
@@ -39,7 +59,32 @@ pub fn roll_with_rng_modifier(
     modifier: Option<i32>,
     rng: &mut impl diceman::Rng,
 ) -> Result<RollResult, RollError> {
-    roll_recursive(registry, table_id, "", rng, 0, &[], modifier)
+    roll_recursive(
+        registry,
+        table_id,
+        "",
+        rng,
+        0,
+        &[],
+        Lookup::Dice { modifier },
+    )
+}
+
+pub fn roll_with_value(
+    registry: &Registry,
+    table_id: &str,
+    value: i32,
+) -> Result<RollResult, RollError> {
+    roll_with_rng_value(registry, table_id, value, &mut diceman::FastRng::new())
+}
+
+pub fn roll_with_rng_value(
+    registry: &Registry,
+    table_id: &str,
+    value: i32,
+    rng: &mut impl diceman::Rng,
+) -> Result<RollResult, RollError> {
+    roll_recursive(registry, table_id, "", rng, 0, &[], Lookup::Direct(value))
 }
 
 fn roll_recursive(
@@ -49,7 +94,7 @@ fn roll_recursive(
     rng: &mut impl diceman::Rng,
     depth: usize,
     reroll_values: &[u32],
-    modifier: Option<i32>,
+    lookup: Lookup,
 ) -> Result<RollResult, RollError> {
     if depth > MAX_CHAIN_DEPTH {
         return Err(RollError::ChainDepthExceeded {
@@ -87,83 +132,99 @@ fn roll_recursive(
             modifier_range,
             ..
         } => {
-            if modifier.is_some() && modifier_range.is_none() {
-                return Err(RollError::ModifierNotSupported {
-                    table: name.clone(),
-                });
-            }
-
-            let (lookup, entry) = {
-                let mut attempts = 0;
-                loop {
-                    let dice_result = diceman::roll_with_rng(roll_expr, rng).map_err(|e| {
-                        RollError::DiceEvaluation {
-                            table: name.clone(),
-                            expr: roll_expr.clone(),
-                            reason: e.to_string(),
-                        }
-                    })?;
-
-                    let roll_value = dice_result.total;
-                    if roll_value < 0 {
-                        return Err(RollError::NegativeRoll { value: roll_value });
-                    }
-                    let roll_i32 = match checked_total_to_i32(roll_value) {
-                        Some(v) => v,
-                        // A total outside i32 range matches no entry; reuse
-                        // RollOutOfRange (its value field is i64) rather than a
-                        // dedicated variant.
-                        None => {
-                            return Err(RollError::RollOutOfRange {
-                                table: name.clone(),
-                                value: roll_value,
-                            });
-                        }
-                    };
-
-                    let lookup = match modifier_range {
-                        Some(_) => match (
-                            results.iter().map(|e| e.min).min(),
-                            results.iter().map(|e| e.max).max(),
-                        ) {
-                            (Some(entry_min), Some(entry_max)) => ((roll_i32 as i64)
-                                + (modifier.unwrap_or(0) as i64))
-                                .clamp(entry_min as i64, entry_max as i64)
-                                as i32,
-                            // Empty results: unreachable for validated tables; falls through to RollOutOfRange below (roller is public; don't .unwrap() the min/max).
-                            _ => roll_i32,
-                        },
-                        None => roll_i32,
-                    };
-
+            let (lookup_value, entry) = match lookup {
+                // Direct lookup: skip the dice roll entirely and find the entry
+                // covering the caller-supplied value. No clamping — a value outside
+                // the entries is an out-of-range error, not silently pinned to the
+                // nearest entry (that distinguishes --value from --modifier).
+                Lookup::Direct(value) => {
                     let entry = results
                         .iter()
-                        .find(|e| lookup >= e.min && lookup <= e.max)
+                        .find(|e| value >= e.min && value <= e.max)
                         .ok_or_else(|| RollError::RollOutOfRange {
                             table: name.clone(),
-                            value: lookup as i64,
+                            value: value as i64,
                         })?;
-
-                    // Reroll matches on the raw die, not the modified `lookup`:
-                    // reroll_values come from a parent chain ref and target a child
-                    // table's own rolls, while a modifier applies only at the top
-                    // level (children are rolled with modifier None). The two never
-                    // coexist, so `roll_i32 == lookup` whenever reroll_values is
-                    // non-empty. The `as u32` cast is safe — the NegativeRoll guard
-                    // above guarantees `roll_i32 >= 0`.
-                    if reroll_values.contains(&(roll_i32 as u32)) {
-                        attempts += 1;
-                        if attempts >= MAX_REROLL_ATTEMPTS {
-                            return Err(RollError::RerollExhausted {
-                                table: name.clone(),
-                                attempts,
-                                reroll_values: reroll_values.to_vec(),
-                            });
-                        }
-                        continue;
+                    (value, entry.clone())
+                }
+                Lookup::Dice { modifier } => {
+                    if modifier.is_some() && modifier_range.is_none() {
+                        return Err(RollError::ModifierNotSupported {
+                            table: name.clone(),
+                        });
                     }
 
-                    break (lookup, entry.clone());
+                    let mut attempts = 0;
+                    loop {
+                        let dice_result = diceman::roll_with_rng(roll_expr, rng).map_err(|e| {
+                            RollError::DiceEvaluation {
+                                table: name.clone(),
+                                expr: roll_expr.clone(),
+                                reason: e.to_string(),
+                            }
+                        })?;
+
+                        let roll_value = dice_result.total;
+                        if roll_value < 0 {
+                            return Err(RollError::NegativeRoll { value: roll_value });
+                        }
+                        let roll_i32 = match checked_total_to_i32(roll_value) {
+                            Some(v) => v,
+                            // A total outside i32 range matches no entry; reuse
+                            // RollOutOfRange (its value field is i64) rather than a
+                            // dedicated variant.
+                            None => {
+                                return Err(RollError::RollOutOfRange {
+                                    table: name.clone(),
+                                    value: roll_value,
+                                });
+                            }
+                        };
+
+                        let lookup = match modifier_range {
+                            Some(_) => match (
+                                results.iter().map(|e| e.min).min(),
+                                results.iter().map(|e| e.max).max(),
+                            ) {
+                                (Some(entry_min), Some(entry_max)) => ((roll_i32 as i64)
+                                    + (modifier.unwrap_or(0) as i64))
+                                    .clamp(entry_min as i64, entry_max as i64)
+                                    as i32,
+                                // Empty results: unreachable for validated tables; falls through to RollOutOfRange below (roller is public; don't .unwrap() the min/max).
+                                _ => roll_i32,
+                            },
+                            None => roll_i32,
+                        };
+
+                        let entry = results
+                            .iter()
+                            .find(|e| lookup >= e.min && lookup <= e.max)
+                            .ok_or_else(|| RollError::RollOutOfRange {
+                                table: name.clone(),
+                                value: lookup as i64,
+                            })?;
+
+                        // Reroll matches on the raw die, not the modified `lookup`:
+                        // reroll_values come from a parent chain ref and target a child
+                        // table's own rolls, while a modifier applies only at the top
+                        // level (children are rolled with modifier None). The two never
+                        // coexist, so `roll_i32 == lookup` whenever reroll_values is
+                        // non-empty. The `as u32` cast is safe — the NegativeRoll guard
+                        // above guarantees `roll_i32 >= 0`.
+                        if reroll_values.contains(&(roll_i32 as u32)) {
+                            attempts += 1;
+                            if attempts >= MAX_REROLL_ATTEMPTS {
+                                return Err(RollError::RerollExhausted {
+                                    table: name.clone(),
+                                    attempts,
+                                    reroll_values: reroll_values.to_vec(),
+                                });
+                            }
+                            continue;
+                        }
+
+                        break (lookup, entry.clone());
+                    }
                 }
             };
 
@@ -179,7 +240,7 @@ fn roll_recursive(
                         rng,
                         depth + 1,
                         chain_ref.reroll_values(),
-                        None,
+                        Lookup::Dice { modifier: None },
                     )?;
                     children.push(child);
                 }
@@ -187,7 +248,7 @@ fn roll_recursive(
 
             Ok(RollResult {
                 table_name: name.clone(),
-                roll: Some(lookup),
+                roll: Some(lookup_value),
                 text,
                 children,
             })
@@ -197,16 +258,31 @@ fn roll_recursive(
             tables: sub_tables,
             ..
         } => {
-            if modifier.is_some() {
-                return Err(RollError::ModifierNotSupported {
-                    table: name.clone(),
-                });
+            match lookup {
+                Lookup::Direct(_) => {
+                    return Err(RollError::DirectValueNotSupported {
+                        table: name.clone(),
+                    });
+                }
+                Lookup::Dice { modifier: Some(_) } => {
+                    return Err(RollError::ModifierNotSupported {
+                        table: name.clone(),
+                    });
+                }
+                Lookup::Dice { modifier: None } => {}
             }
 
             let mut children = Vec::new();
             for table_ref in sub_tables {
-                let child =
-                    roll_recursive(registry, table_ref, namespace, rng, depth + 1, &[], None)?;
+                let child = roll_recursive(
+                    registry,
+                    table_ref,
+                    namespace,
+                    rng,
+                    depth + 1,
+                    &[],
+                    Lookup::Dice { modifier: None },
+                )?;
                 children.push(child);
             }
 
@@ -957,6 +1033,155 @@ mod tests {
         assert_eq!(checked_total_to_i32(i64::MAX), None);
         assert_eq!(checked_total_to_i32(i32::MIN as i64 - 1), None);
         assert_eq!(checked_total_to_i32(i64::MIN), None);
+    }
+
+    #[test]
+    fn value_direct_lookup_skips_dice() {
+        // A direct value selects the matching entry regardless of the RNG, so the
+        // same value yields the same entry across seeds (dice never consulted).
+        let reg = build_test_registry();
+        for seed in 0..50 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let result = roll_with_rng_value(&reg, "test.simple", 5, &mut rng).unwrap();
+            assert_eq!(result.roll, Some(5));
+            assert_eq!(result.text.as_deref(), Some("High"));
+        }
+    }
+
+    #[test]
+    fn value_out_of_range_errors() {
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        // test.simple covers 1..=6; 7 is outside every entry.
+        let err = roll_with_rng_value(&reg, "test.simple", 7, &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::RollOutOfRange { value, .. } if value == 7));
+    }
+
+    #[test]
+    fn value_does_not_clamp() {
+        // The defining difference from --modifier: a value past the entry envelope
+        // errors out, it is NOT pinned to the nearest entry. carousing covers 1..=14.
+        let reg = carousing_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = roll_with_rng_value(&reg, "ns.carousing", 100, &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::RollOutOfRange { value, .. } if value == 100));
+    }
+
+    #[test]
+    fn value_negative_lookup() {
+        // Direct lookup ignores how a table validated, so an in-memory table with
+        // negative entries (the Traveller boarding-action shape) resolves directly.
+        let mut reg = Registry::new();
+        let results = (-7..=7)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some(format!("Outcome {v}")),
+                chain: None,
+            })
+            .collect();
+        reg.register(
+            "ns.boarding".into(),
+            Table::Simple {
+                id: "boarding".into(),
+                name: "Boarding Action".into(),
+                tags: vec![],
+                roll: "1d8".into(),
+                modifier_range: None,
+                results,
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "ns.boarding", -7, &mut rng).unwrap();
+        assert_eq!(result.roll, Some(-7));
+        assert_eq!(result.text.as_deref(), Some("Outcome -7"));
+    }
+
+    #[test]
+    fn value_resolves_chains() {
+        // test.chained entry 1 chains to test.simple; --value must follow chains.
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "test.chained", 1, &mut rng).unwrap();
+        assert_eq!(result.roll, Some(1));
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].table_name, "Simple Test");
+    }
+
+    #[test]
+    fn value_interpolates_text() {
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "test.interpolated", 2, &mut rng).unwrap();
+        let text = result.text.as_ref().unwrap();
+        assert!(!text.contains('{'));
+        assert!(text.starts_with("Found "));
+        assert!(text.ends_with(" gold coins"));
+    }
+
+    #[test]
+    fn value_on_compound_errors() {
+        let reg = build_test_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = roll_with_rng_value(&reg, "test.compound", 1, &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::DirectValueNotSupported { .. }));
+    }
+
+    #[test]
+    fn value_does_not_leak_to_children() {
+        // Every parent entry chains to a child whose entries (1..=6) do not cover
+        // the parent value (10). If Direct(10) leaked into the child it would roll
+        // out of range; instead the child is rolled normally and stays in 1..=6.
+        let mut reg = Registry::new();
+        let parent_results = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some("P".into()),
+                chain: Some(vec![ChainRef::Simple("child".into())]),
+            })
+            .collect();
+        reg.register(
+            "ns.parent".into(),
+            Table::Simple {
+                id: "parent".into(),
+                name: "Parent".into(),
+                tags: vec![],
+                roll: "1d14".into(),
+                modifier_range: None,
+                results: parent_results,
+            },
+        )
+        .unwrap();
+        reg.register(
+            "ns.child".into(),
+            Table::Simple {
+                id: "child".into(),
+                name: "Child".into(),
+                tags: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("C".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        for seed in 0..100 {
+            let mut rng = diceman::FastRng::with_seed(seed);
+            let r = roll_with_rng_value(&reg, "ns.parent", 10, &mut rng).unwrap();
+            assert_eq!(r.roll, Some(10));
+            assert_eq!(r.children.len(), 1);
+            let child_roll = r.children[0].roll.unwrap();
+            assert!(
+                (1..=6).contains(&child_roll),
+                "seed {seed}: child rolled {child_roll}, value must not leak"
+            );
+        }
     }
 
     #[test]

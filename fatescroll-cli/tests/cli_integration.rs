@@ -1268,3 +1268,162 @@ fn roll_without_modifier_still_works() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Aging"), "got: {stdout}");
 }
+
+#[test]
+fn roll_with_value_direct_lookup() {
+    // wilderness-encounter entry 6-7 is "Abandoned campsite" (no chain): a clean
+    // deterministic lookup proving --value skips the dice roll.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+            "--value",
+            "6",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Abandoned campsite"), "got: {stdout}");
+    assert!(stdout.contains("rolled 6"), "got: {stdout}");
+}
+
+#[test]
+fn roll_with_value_resolves_chain() {
+    // wilderness-encounter entry 1-3 chains to animal-type; --value must run the
+    // full pipeline, so the child table appears in the output.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+            "--value",
+            "1",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Animal encounter"), "got: {stdout}");
+    assert!(stdout.contains("Animal Type"), "got: {stdout}");
+}
+
+#[test]
+fn roll_with_value_accepts_negative() {
+    // aging covers -5..6; --value -5 looks up the most-negative entry directly.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("modifier-collection").to_string_lossy(),
+            "mod.traveller.aging",
+            "--value",
+            "-5",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Severe decline"), "got: {stdout}");
+}
+
+#[test]
+fn roll_with_value_out_of_range_errors() {
+    // animal-type covers 1..=4; 9 is outside every entry.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.animal-type",
+            "--value",
+            "9",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("out of range"), "got: {stderr}");
+}
+
+#[test]
+fn roll_with_value_does_not_clamp() {
+    // Unlike --modifier, --value past the envelope errors rather than clamping:
+    // aging covers -5..6, so 100 must NOT resolve to the top entry.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("modifier-collection").to_string_lossy(),
+            "mod.traveller.aging",
+            "--value",
+            "100",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stdout.contains("No effect"),
+        "value must not clamp: {stdout}"
+    );
+    assert!(stderr.contains("out of range"), "got: {stderr}");
+}
+
+#[test]
+fn roll_with_value_conflicts_with_modifier() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("modifier-collection").to_string_lossy(),
+            "mod.shadowdark.carousing",
+            "--value",
+            "5",
+            "--modifier",
+            "2",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        !output.status.success(),
+        "--value and --modifier must be mutually exclusive"
+    );
+}
+
+#[test]
+fn roll_with_value_on_compound_errors() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.npc.quick-npc",
+            "--value",
+            "1",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("does not support direct value lookup"),
+        "got: {stderr}"
+    );
+}
