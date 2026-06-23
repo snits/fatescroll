@@ -1109,6 +1109,7 @@ mod tests {
                 id: "boarding".into(),
                 name: "Boarding Action".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d8".into(),
                 modifier_range: None,
                 results,
@@ -1171,6 +1172,7 @@ mod tests {
                 id: "parent".into(),
                 name: "Parent".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d14".into(),
                 modifier_range: None,
                 results: parent_results,
@@ -1183,6 +1185,7 @@ mod tests {
                 id: "child".into(),
                 name: "Child".into(),
                 tags: vec![],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {

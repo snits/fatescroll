@@ -77,6 +77,9 @@ enum Commands {
         collection: Option<PathBuf>,
         /// Fully qualified table ID (e.g., "dmg.treasure.gems")
         table_id: String,
+        /// Include the table's notes in the output
+        #[arg(long)]
+        notes: bool,
     },
     /// Generate a table YAML template
     Init {
@@ -224,7 +227,9 @@ fn main() {
         Commands::Show {
             collection,
             table_id,
-        } => resolve_collection(collection).and_then(|collection| cmd_show(&collection, &table_id)),
+            notes,
+        } => resolve_collection(collection)
+            .and_then(|collection| cmd_show(&collection, &table_id, notes)),
         Commands::Init {
             roll,
             entries,
@@ -342,7 +347,11 @@ fn cmd_roll(
     Ok(())
 }
 
-fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Error> {
+fn cmd_show(
+    collection: &Path,
+    table_id: &str,
+    show_notes: bool,
+) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
     let table = registry.get(table_id).ok_or_else(|| {
         std::io::Error::new(
@@ -352,7 +361,7 @@ fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Er
     })?;
     print!(
         "{}",
-        fatescroll_core::display::format_table(table_id, table, false)
+        fatescroll_core::display::format_table(table_id, table, show_notes)
     );
     Ok(())
 }
