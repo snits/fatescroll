@@ -1211,6 +1211,34 @@ mod tests {
     }
 
     #[test]
+    fn roller_ignores_notes() {
+        let mut reg = Registry::new();
+        reg.register(
+            "ns.noted".into(),
+            Table::Simple {
+                id: "noted".into(),
+                name: "Noted".into(),
+                tags: vec![],
+                notes: vec!["This note must not affect rolling".into()],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("Only outcome".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "ns.noted", &mut rng).unwrap();
+        assert_eq!(result.table_name, "Noted");
+        assert_eq!(result.text.as_deref(), Some("Only outcome"));
+    }
+
+    #[test]
     fn self_referential_chain_with_reroll() {
         let mut reg = Registry::new();
         reg.register(
