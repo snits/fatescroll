@@ -40,6 +40,9 @@ enum Commands {
         /// Apply a roll modifier (requires the table to declare modifier_range)
         #[arg(long, allow_negative_numbers = true)]
         modifier: Option<i32>,
+        /// Print the result as JSON instead of the human-readable tree
+        #[arg(long)]
+        json: bool,
     },
     /// Search for tables
     Search {
@@ -58,6 +61,9 @@ enum Commands {
         /// List all unique tags in the collection
         #[arg(long, conflicts_with_all = ["name", "tag", "namespace"])]
         tags: bool,
+        /// Print results as JSON instead of the human-readable listing
+        #[arg(long)]
+        json: bool,
     },
     /// Display a table's contents
     Show {
@@ -189,14 +195,16 @@ fn main() {
             collection,
             table_id,
             modifier,
+            json,
         } => resolve_collection(collection)
-            .and_then(|collection| cmd_roll(&collection, &table_id, modifier)),
+            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, json)),
         Commands::Search {
             collection,
             name,
             tag,
             namespace,
             tags,
+            json,
         } => resolve_collection(collection).and_then(|collection| {
             cmd_search(
                 &collection,
@@ -204,6 +212,7 @@ fn main() {
                 tag.as_deref(),
                 namespace.as_deref(),
                 tags,
+                json,
             )
         }),
         Commands::Show {
@@ -310,10 +319,15 @@ fn cmd_roll(
     collection: &Path,
     table_id: &str,
     modifier: Option<i32>,
+    json: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
     let result = fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?;
-    print_roll_result(&result, 0);
+    if json {
+        print_json(&result)?;
+    } else {
+        print_roll_result(&result, 0);
+    }
     Ok(())
 }
 
@@ -329,6 +343,12 @@ fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Er
         "{}",
         fatescroll_core::display::format_table(table_id, table)
     );
+    Ok(())
+}
+
+fn print_json<T: serde::Serialize>(value: &T) -> Result<(), fatescroll_core::Error> {
+    let s = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
+    println!("{s}");
     Ok(())
 }
 
@@ -353,17 +373,28 @@ fn print_roll_result(result: &fatescroll_core::RollResult, indent: usize) {
     }
 }
 
+#[derive(serde::Serialize)]
+struct SearchHit<'a> {
+    id: &'a str,
+    name: &'a str,
+    tags: Vec<&'a str>,
+}
+
 fn cmd_search(
     collection: &Path,
     name: Option<&str>,
     tag: Option<&str>,
     namespace: Option<&str>,
     tags: bool,
+    json: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
 
     if tags {
         let all_tags = fatescroll_core::search::collect_tags(&registry);
+        if json {
+            return print_json(&all_tags);
+        }
         if all_tags.is_empty() {
             println!("No tags found.");
         } else {
@@ -387,6 +418,18 @@ fn cmd_search(
         )
         .into());
     };
+
+    if json {
+        let hits: Vec<SearchHit> = results
+            .iter()
+            .map(|&(fqid, table)| SearchHit {
+                id: fqid,
+                name: table.name(),
+                tags: table.tags().iter().map(|s| s.as_str()).collect(),
+            })
+            .collect();
+        return print_json(&hits);
+    }
 
     if results.is_empty() {
         println!("No tables found.");
