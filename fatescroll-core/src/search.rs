@@ -61,6 +61,7 @@ mod tests {
                 id: "gems".into(),
                 name: "Gem Type".into(),
                 tags: vec!["treasure".into(), "gems".into()],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -78,6 +79,7 @@ mod tests {
                 id: "wilderness".into(),
                 name: "Wilderness Encounter".into(),
                 tags: vec!["encounter".into(), "wilderness".into()],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
@@ -95,6 +97,7 @@ mod tests {
                 id: "occupation".into(),
                 name: "NPC Occupation".into(),
                 tags: vec!["npc".into()],
+                notes: vec![],
                 roll: "1d6".into(),
                 modifier_range: None,
                 results: vec![ResultEntry {
