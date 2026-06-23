@@ -12,8 +12,9 @@ use std::sync::LazyLock;
 static NAMESPACE_SEGMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]*$").unwrap());
 
-/// Maximum span of a modifier table's entry envelope. Bounds the coverage
-/// allocation and guards against overflow from absurd modifier_range bounds.
+/// Maximum span of a simple table's entry envelope (modifier or plain dice).
+/// Bounds the coverage-vec allocation and guards against overflow from absurd
+/// envelope bounds.
 const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 
 /// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
@@ -21,7 +22,9 @@ const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 /// On rejection returns the offending `width` (`Err`) for the caller's error.
 /// Callers pass non-overflowing i64 endpoints (i32-derived or non-negative),
 /// so `max - min` cannot overflow.
+/// Callers must pass `min <= max`.
 fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
+    debug_assert!(min <= max, "bounded_envelope requires min <= max");
     let width = max - min;
     if width > MAX_ENVELOPE_WIDTH || min < i32::MIN as i64 || max > i32::MAX as i64 {
         return Err(width);
