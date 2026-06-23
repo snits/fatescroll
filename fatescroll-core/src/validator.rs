@@ -16,6 +16,19 @@ static NAMESPACE_SEGMENT: LazyLock<Regex> =
 /// allocation and guards against overflow from absurd modifier_range bounds.
 const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 
+/// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
+/// wide to allocate a coverage vec for, or whose endpoints fall outside i32.
+/// On rejection returns the offending `width` (`Err`) for the caller's error.
+/// Callers pass non-overflowing i64 endpoints (i32-derived or non-negative),
+/// so `max - min` cannot overflow.
+fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
+    let width = max - min;
+    if width > MAX_ENVELOPE_WIDTH || min < i32::MIN as i64 || max > i32::MAX as i64 {
+        return Err(width);
+    }
+    Ok((min as i32, max as i32))
+}
+
 pub fn validate_namespace(namespace: &str) -> Result<(), ValidationError> {
     if namespace.is_empty() {
         return Err(ValidationError::InvalidNamespace {
@@ -101,20 +114,16 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                     })?;
                     let env_min = d_min as i64 + mr.min as i64;
                     let env_max = d_max as i64 + mr.max as i64;
-                    let width = env_max - env_min;
-                    // Reject envelopes too wide to allocate, or whose endpoints fall
-                    // outside i32 (entries are i32, so such an envelope is meaningless).
-                    if width > MAX_ENVELOPE_WIDTH
-                        || env_min < i32::MIN as i64
-                        || env_max > i32::MAX as i64
-                    {
-                        return Err(ValidationError::ModifierRangeTooWide {
-                            table: name.clone(),
-                            width,
-                            max: MAX_ENVELOPE_WIDTH,
-                        });
+                    match bounded_envelope(env_min, env_max) {
+                        Ok(pair) => pair,
+                        Err(width) => {
+                            return Err(ValidationError::ModifierRangeTooWide {
+                                table: name.clone(),
+                                width,
+                                max: MAX_ENVELOPE_WIDTH,
+                            });
+                        }
                     }
-                    (env_min as i32, env_max as i32)
                 }
                 None => {
                     let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
@@ -134,7 +143,16 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                             ),
                         });
                     }
-                    (sim.min as i32, sim.max as i32)
+                    match bounded_envelope(sim.min, sim.max) {
+                        Ok(pair) => pair,
+                        Err(width) => {
+                            return Err(ValidationError::DiceRangeTooWide {
+                                table: name.clone(),
+                                width,
+                                max: MAX_ENVELOPE_WIDTH,
+                            });
+                        }
+                    }
                 }
             };
             validate_envelope_coverage(name, envelope_min, envelope_max, results)
@@ -925,5 +943,52 @@ mod tests {
         // Per-type validation for compound tables always passes
         // (reference resolution is cross-ref validation in Task 7)
         assert!(validate_table(&table).is_ok());
+    }
+
+    #[test]
+    fn non_modifier_dice_range_too_wide_is_rejected() {
+        // 1dN with N well past MAX_ENVELOPE_WIDTH: a single entry covers the whole
+        // span. Over 100_000 seeded samples of 1d400000 the observed span is ~400k,
+        // comfortably above the 100k cap, so the width guard must reject it.
+        let sides = MAX_ENVELOPE_WIDTH * 4; // 400_000
+        let table = Table::Simple {
+            id: "wide".into(),
+            name: "Wide".into(),
+            tags: vec![],
+            roll: format!("1d{sides}"),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: sides as i32,
+                text: Some("x".into()),
+                chain: None,
+            }],
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::DiceRangeTooWide { .. }),
+            "expected DiceRangeTooWide, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn bounded_envelope_accepts_normal_width() {
+        assert_eq!(bounded_envelope(1, 6), Ok((1, 6)));
+        // exact cap boundary: width == MAX_ENVELOPE_WIDTH is accepted (guard is `>`)
+        assert_eq!(bounded_envelope(0, MAX_ENVELOPE_WIDTH), Ok((0, 100_000)));
+    }
+
+    #[test]
+    fn bounded_envelope_rejects_too_wide() {
+        // width = MAX_ENVELOPE_WIDTH + 1
+        let err = bounded_envelope(0, MAX_ENVELOPE_WIDTH + 1).unwrap_err();
+        assert_eq!(err, MAX_ENVELOPE_WIDTH + 1);
+    }
+
+    #[test]
+    fn bounded_envelope_rejects_endpoint_beyond_i32() {
+        // width is small, but max exceeds i32::MAX
+        let big = i32::MAX as i64 + 1;
+        assert!(bounded_envelope(big - 5, big).is_err());
     }
 }
