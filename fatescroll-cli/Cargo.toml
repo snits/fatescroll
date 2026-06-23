@@ -11,6 +11,8 @@ path = "src/main.rs"
 [dependencies]
 fatescroll-core = { path = "../fatescroll-core" }
 clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }

@@ -40,6 +40,9 @@ enum Commands {
         /// Apply a roll modifier (requires the table to declare modifier_range)
         #[arg(long, allow_negative_numbers = true)]
         modifier: Option<i32>,
+        /// Print the result as JSON instead of the human-readable tree
+        #[arg(long)]
+        json: bool,
     },
     /// Search for tables
     Search {
@@ -189,8 +192,9 @@ fn main() {
             collection,
             table_id,
             modifier,
+            json,
         } => resolve_collection(collection)
-            .and_then(|collection| cmd_roll(&collection, &table_id, modifier)),
+            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, json)),
         Commands::Search {
             collection,
             name,
@@ -310,10 +314,15 @@ fn cmd_roll(
     collection: &Path,
     table_id: &str,
     modifier: Option<i32>,
+    json: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
     let result = fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?;
-    print_roll_result(&result, 0);
+    if json {
+        print_json(&result)?;
+    } else {
+        print_roll_result(&result, 0);
+    }
     Ok(())
 }
 
@@ -329,6 +338,12 @@ fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Er
         "{}",
         fatescroll_core::display::format_table(table_id, table)
     );
+    Ok(())
+}
+
+fn print_json<T: serde::Serialize>(value: &T) -> Result<(), fatescroll_core::Error> {
+    let s = serde_json::to_string_pretty(value).map_err(std::io::Error::other)?;
+    println!("{s}");
     Ok(())
 }
 

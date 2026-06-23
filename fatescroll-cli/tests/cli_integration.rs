@@ -68,6 +68,29 @@ fn roll_on_table() {
 }
 
 #[test]
+fn roll_json_output() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.terrain.wilderness",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    assert_eq!(value["table_name"], "Wilderness Terrain");
+    assert!(value["children"].is_array());
+}
+
+#[test]
 fn search_by_tag() {
     let output = fatescroll_bin()
         .args([
