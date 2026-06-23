@@ -1427,3 +1427,46 @@ fn roll_with_value_on_compound_errors() {
         "got: {stderr}"
     );
 }
+
+#[test]
+fn show_notes_flag_displays_notes() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+            "--notes",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Notes:"));
+    assert!(stdout.contains("Roll once per watch"));
+}
+
+#[test]
+fn show_without_notes_flag_omits_notes() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("Notes:"));
+    assert!(!stdout.contains("Roll once per watch"));
+}
