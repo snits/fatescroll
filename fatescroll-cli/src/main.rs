@@ -352,7 +352,7 @@ fn cmd_show(collection: &Path, table_id: &str) -> Result<(), fatescroll_core::Er
     })?;
     print!(
         "{}",
-        fatescroll_core::display::format_table(table_id, table)
+        fatescroll_core::display::format_table(table_id, table, false)
     );
     Ok(())
 }
