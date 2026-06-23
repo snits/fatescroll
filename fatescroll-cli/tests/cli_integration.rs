@@ -87,6 +87,7 @@ fn roll_json_output() {
     let value: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
     assert_eq!(value["table_name"], "Wilderness Terrain");
+    assert!(value["roll"].is_number());
     assert!(value["children"].is_array());
 }
 
