@@ -4,7 +4,6 @@
 use crate::error::ValidationError;
 use crate::models::{ResultEntry, Table};
 use crate::registry::Registry;
-use diceman::Expr;
 use regex::Regex;
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -88,7 +87,7 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                 validate_result_entry(entry, name)?;
             }
 
-            if let Expr::DigitRoll { sides, count } = parsed {
+            if let Some((sides, count)) = crate::dice::digit_dice_params(&parsed) {
                 if modifier_range.is_some() {
                     return Err(ValidationError::ModifierUnsupportedForDigitDice {
                         table: name.clone(),

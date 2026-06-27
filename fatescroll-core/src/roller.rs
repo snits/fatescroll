@@ -164,7 +164,7 @@ fn roll_recursive(
                             }
                         })?;
 
-                        let roll_value = dice_result.total;
+                        let roll_value = dice_result.outcome.as_numeric();
                         if roll_value < 0 {
                             return Err(RollError::NegativeRoll { value: roll_value });
                         }
@@ -308,7 +308,7 @@ fn interpolate_dice(text: &str, rng: &mut impl diceman::Rng) -> String {
         .replace_all(text, |caps: &regex::Captures| {
             let expr = &caps[1];
             match diceman::roll_with_rng(expr, rng) {
-                Ok(result) => result.total.to_string(),
+                Ok(result) => result.outcome.as_numeric().to_string(),
                 Err(_) => caps[0].to_string(),
             }
         })

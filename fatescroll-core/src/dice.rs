@@ -2,7 +2,20 @@
 // ABOUTME: Used by both the template generator and table validator.
 
 use crate::error::{Error, ValidationError};
-use diceman::{Expr, Op};
+use diceman::{Expr, Op, ScoringMode};
+
+/// If `expr` is a digit-dice roll (D66, D666, ...), return its `(sides, count)`.
+///
+/// Digit dice lower to a `Roll` whose scoring concatenates the faces as
+/// decimal digits; the side count comes from the pool's die kind.
+pub(crate) fn digit_dice_params(expr: &Expr) -> Option<(u32, u32)> {
+    match expr {
+        Expr::Roll(roll) if matches!(roll.scoring, ScoringMode::DigitConcatenate) => {
+            Some((roll.pool.kind.count(), roll.pool.count))
+        }
+        _ => None,
+    }
+}
 
 /// Compute the min and max values of a simple dice expression analytically.
 /// Supports XdY, XdY±Z, and DNN (digit-dice) forms only. Rejects expressions
@@ -11,16 +24,21 @@ use diceman::{Expr, Op};
 pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
     let parsed = diceman::parse(expr)?;
     match parsed {
-        Expr::DigitRoll { sides, count } => {
-            let values = digit_dice_values(sides, count);
-            Ok((*values.first().unwrap(), *values.last().unwrap()))
-        }
         Expr::Roll(roll) => {
             if !roll.modifiers.is_empty() {
                 return Err(unsupported(expr, "dice modifiers"));
             }
-            let sides = roll.sides.count();
-            Ok((roll.count, roll.count * sides))
+            match roll.scoring {
+                ScoringMode::DigitConcatenate => {
+                    let values = digit_dice_values(roll.pool.kind.count(), roll.pool.count);
+                    Ok((*values.first().unwrap(), *values.last().unwrap()))
+                }
+                ScoringMode::Sum => {
+                    let sides = roll.pool.kind.count();
+                    Ok((roll.pool.count, roll.pool.count * sides))
+                }
+                _ => Err(unsupported(expr, "scoring mode")),
+            }
         }
         Expr::BinOp { op, left, right } => {
             let roll = match *left {
@@ -30,12 +48,15 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
             if !roll.modifiers.is_empty() {
                 return Err(unsupported(expr, "dice modifiers"));
             }
+            if !matches!(roll.scoring, ScoringMode::Sum) {
+                return Err(unsupported(expr, "scoring mode"));
+            }
             let z = match *right {
                 Expr::Number(n) => n,
                 _ => return Err(unsupported(expr, "non-literal right-hand expression")),
             };
-            let sides = roll.sides.count() as i64;
-            let count = roll.count as i64;
+            let sides = roll.pool.kind.count() as i64;
+            let count = roll.pool.count as i64;
             let (min, max) = match op {
                 Op::Add => (count + z, count * sides + z),
                 Op::Sub => (count - z, count * sides - z),
