@@ -1,8 +1,8 @@
 // ABOUTME: Tests for the engine bridge: wrapEngine's JSON parsing/memoization
 // ABOUTME: over a fake raw engine, plus EngineProvider/useEngine/useDerived wiring.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { Engine, RollNode } from '../src/engine/engine';
 import { wrapEngine } from '../src/engine/engine';
@@ -284,6 +284,69 @@ describe('useDerived', () => {
     await waitFor(() => {
       expect(result.current.errors).toEqual(['err1']);
     });
+  });
+
+  it('maps an engine throw into derived errors instead of crashing or freezing', async () => {
+    const fake = makeFakeEngine();
+    let shouldThrow = true;
+    fake.validate = () => {
+      if (shouldThrow) throw new Error('wasm panicked');
+      return [];
+    };
+
+    const { result } = renderHook(() => useDerived(), { wrapper: wrapper(fake) });
+
+    // Eager first-render computation must not white-screen: the throw maps
+    // into errors while the pure yaml parts still derive.
+    expect(result.current.errors).toHaveLength(1);
+    expect(result.current.errors[0]).toContain('engine failure');
+    expect(result.current.errors[0]).toContain('wasm panicked');
+    expect(result.current.currentTitle).toBe('MANIFEST.YAML');
+    expect(result.current.currentYaml).toContain('name: New Collection');
+
+    // Debounced recompute path must not freeze on stale state: once the
+    // engine recovers, a store change clears the failure.
+    shouldThrow = false;
+    useForgeStore.getState().addDir();
+
+    await waitFor(() => {
+      expect(result.current.errors).toEqual([]);
+    });
+    expect(result.current.files).toEqual([]);
+  });
+
+  it('debounces recomputes: rapid mutations collapse to one trailing validate', async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = makeFakeEngine();
+      let validateCalls = 0;
+      fake.validate = () => {
+        validateCalls++;
+        return [];
+      };
+
+      const { result } = renderHook(() => useDerived(), { wrapper: wrapper(fake, 100) });
+      expect(validateCalls).toBe(1); // eager initial computation
+
+      act(() => {
+        useForgeStore.getState().addDir();
+        const dirId = useForgeStore.getState().dirs[0].id;
+        useForgeStore.getState().addTable(dirId);
+        const tableUid = useForgeStore.getState().tables[0].uid;
+        useForgeStore.getState().updateTable(tableUid, { name: 'Renamed' });
+      });
+      expect(validateCalls).toBe(1); // still pending — nothing fired yet
+
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+
+      expect(validateCalls).toBe(2); // one trailing-edge recompute, not one per mutation
+      expect(result.current.files).toHaveLength(1);
+      expect(result.current.currentTitle).toBe('NEW-TABLE.YAML');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('falls back to the manifest yaml/title on the manifest view', async () => {

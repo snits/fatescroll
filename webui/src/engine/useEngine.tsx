@@ -80,7 +80,18 @@ function computeDerived(
 ): Derived {
   const files = collectionFiles(dirs, tables);
   const manifestYamlText = buildManifestYaml(manifest, dirs);
-  const errors = engine.validate(manifestYamlText, files);
+  // YAML emission above is pure TS; only the engine call can throw (a WASM
+  // panic surfaces as a RuntimeError, a malformed envelope as a JSON.parse
+  // throw). Both call sites of computeDerived — the eager useState
+  // initializer and the debounced timer callback — run outside any error
+  // boundary, so a throw is surfaced as a validation error instead: the
+  // derived yaml stays current and the next recompute can recover.
+  let errors: string[];
+  try {
+    errors = engine.validate(manifestYamlText, files);
+  } catch (err) {
+    errors = [`engine failure: ${String(err)}`];
+  }
 
   if (view === 'table') {
     const selected = tables.find((t) => t.uid === selUid);
