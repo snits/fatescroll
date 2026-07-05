@@ -1,14 +1,12 @@
 // ABOUTME: Header bar for Table Forge: brand block, collection name, live
 // ABOUTME: validation status pill, and the (disabled until Task 11) export button.
 
-import type { ManifestState } from '../model/types';
-
 export interface HeaderBarProps {
-  manifest: ManifestState;
+  collectionName: string;
   errorCount: number;
 }
 
-export function HeaderBar({ manifest, errorCount }: HeaderBarProps) {
+export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
   const valid = errorCount === 0;
   const statusText = valid
     ? 'Collection is valid'
@@ -23,10 +21,13 @@ export function HeaderBar({ manifest, errorCount }: HeaderBarProps) {
       <div className="header-divider" />
       <div className="header-collection">
         <span className="header-collection-label">Collection</span>
-        <span className="header-collection-name">{manifest.name}</span>
+        <span className="header-collection-name">{collectionName}</span>
       </div>
       <div className="header-spacer" />
-      <div className={`header-status ${valid ? 'header-status--valid' : 'header-status--invalid'}`}>
+      <div
+        className={`header-status ${valid ? 'header-status--valid' : 'header-status--invalid'}`}
+        aria-live="polite"
+      >
         <span className="header-status-dot" />
         <span className="header-status-text">{statusText}</span>
       </div>

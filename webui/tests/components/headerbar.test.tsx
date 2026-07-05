@@ -9,21 +9,13 @@ import { AppContent } from '../../src/App';
 import { EngineProvider } from '../../src/engine/useEngine';
 import type { Engine } from '../../src/engine/engine';
 import { initialState, useForgeStore } from '../../src/model/store';
-import type { ManifestState } from '../../src/model/types';
 
 afterEach(cleanup);
 
-const manifest: ManifestState = {
-  name: 'Border Marches',
-  version: '1.0',
-  namespace: 'border-marches',
-  author: '',
-  minToolVersion: '',
-};
 
 describe('HeaderBar', () => {
   it('renders the brand block and the collection name', () => {
-    render(<HeaderBar manifest={manifest} errorCount={0} />);
+    render(<HeaderBar collectionName="Border Marches" errorCount={0} />);
 
     expect(screen.getByText('Fatescroll')).toBeTruthy();
     expect(screen.getByText('TABLE FORGE')).toBeTruthy();
@@ -32,26 +24,26 @@ describe('HeaderBar', () => {
   });
 
   it('shows a valid status pill with zero errors', () => {
-    render(<HeaderBar manifest={manifest} errorCount={0} />);
+    render(<HeaderBar collectionName="Border Marches" errorCount={0} />);
     const text = screen.getByText('Collection is valid');
     expect(text).toBeTruthy();
     expect(text.closest('.header-status')?.className).toContain('header-status--valid');
   });
 
   it('shows an invalid status pill with a pluralized error count', () => {
-    render(<HeaderBar manifest={manifest} errorCount={3} />);
+    render(<HeaderBar collectionName="Border Marches" errorCount={3} />);
     const text = screen.getByText('3 errors');
     expect(text).toBeTruthy();
     expect(text.closest('.header-status')?.className).toContain('header-status--invalid');
   });
 
   it('singularizes a single error', () => {
-    render(<HeaderBar manifest={manifest} errorCount={1} />);
+    render(<HeaderBar collectionName="Border Marches" errorCount={1} />);
     expect(screen.getByText('1 error')).toBeTruthy();
   });
 
   it('renders a disabled export button', () => {
-    render(<HeaderBar manifest={manifest} errorCount={0} />);
+    render(<HeaderBar collectionName="Border Marches" errorCount={0} />);
     const button = screen.getByRole('button', { name: /export collection/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
   });

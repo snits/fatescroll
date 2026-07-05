@@ -72,7 +72,7 @@ describe('Scriptorium', () => {
 
     expect(useForgeStore.getState().view).toBe('table');
     expect(useForgeStore.getState().selUid).toBe('table-1');
-    expect(row.className).toContain('selected');
+    expect(row.className).toContain('tree-table--selected');
   });
 
   it('clicking a directory header opens the manifest view', async () => {
@@ -94,7 +94,9 @@ describe('Scriptorium', () => {
     await user.click(screen.getByRole('button', { name: /manifest\.yaml/ }));
 
     expect(useForgeStore.getState().view).toBe('manifest');
-    expect(screen.getByRole('button', { name: /manifest\.yaml/ }).className).toContain('selected');
+    expect(screen.getByRole('button', { name: /manifest\.yaml/ }).className).toContain(
+      'tree-manifest--selected',
+    );
   });
 
   it('the directory + button adds a table to that directory and selects it', async () => {

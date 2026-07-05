@@ -59,13 +59,13 @@
 }
 
 .header-status--valid {
-  border-color: #5f7a3a;
-  background: rgba(120, 160, 80, 0.18);
+  border-color: var(--status-ok-border);
+  background: var(--status-ok-bg);
 }
 
 .header-status--invalid {
-  border-color: #9c5a34;
-  background: rgba(180, 90, 50, 0.18);
+  border-color: var(--status-bad-border);
+  background: var(--status-bad-bg);
 }
 
 .header-status-dot {
@@ -75,13 +75,13 @@
 }
 
 .header-status--valid .header-status-dot {
-  background: #8fbf6a;
-  box-shadow: 0 0 8px #8fbf6a;
+  background: var(--status-ok-dot);
+  box-shadow: 0 0 8px var(--status-ok-dot);
 }
 
 .header-status--invalid .header-status-dot {
-  background: #d98a5a;
-  box-shadow: 0 0 8px #d98a5a;
+  background: var(--status-bad-dot);
+  box-shadow: 0 0 8px var(--status-bad-dot);
 }
 
 .header-status-text {
@@ -90,11 +90,11 @@
 }
 
 .header-status--valid .header-status-text {
-  color: #dbe7b8;
+  color: var(--status-ok-fg);
 }
 
 .header-status--invalid .header-status-text {
-  color: #eec6a6;
+  color: var(--status-bad-fg);
 }
 
 .header-export {
@@ -155,7 +155,7 @@
 }
 
 .tree-manifest:hover {
-  border-color: #a98f63;
+  border-color: var(--hover-border);
 }
 
 .tree-manifest-glyph {
@@ -168,12 +168,12 @@
   font-weight: 400;
 }
 
-.tree-manifest.selected {
+.tree-manifest.tree-manifest--selected {
   background: var(--ox-active-bg);
   border-color: var(--ox);
 }
 
-.tree-manifest.selected .tree-manifest-name {
+.tree-manifest.tree-manifest--selected .tree-manifest-name {
   color: var(--ox-text);
   font-weight: 600;
 }
@@ -226,7 +226,7 @@
 }
 
 .tree-dir-add:hover {
-  background: #eadfbf;
+  background: var(--hover-btn);
 }
 
 .tree-table {
@@ -246,7 +246,7 @@
 }
 
 .tree-table:hover {
-  background: #e7dcbe;
+  background: var(--hover-row);
 }
 
 .tree-table-badge {
@@ -275,12 +275,12 @@
   white-space: nowrap;
 }
 
-.tree-table.selected {
+.tree-table.tree-table--selected {
   background: var(--ox-active-bg);
   border-left-color: var(--ox);
 }
 
-.tree-table.selected .tree-table-name {
+.tree-table.tree-table--selected .tree-table-name {
   color: var(--ox-text);
   font-weight: 600;
 }
@@ -299,5 +299,5 @@
 }
 
 .tree-add-dir:hover {
-  background: #e7dcbe;
+  background: var(--hover-row);
 }

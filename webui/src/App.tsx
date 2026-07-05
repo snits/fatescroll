@@ -4,12 +4,12 @@ import { HeaderBar } from './components/HeaderBar';
 import { Scriptorium } from './components/Scriptorium';
 
 export function AppContent() {
-  const manifest = useForgeStore((s) => s.manifest);
+  const collectionName = useForgeStore((s) => s.manifest.name);
   const { errors } = useDerived();
 
   return (
     <div className="app">
-      <HeaderBar manifest={manifest} errorCount={errors.length} />
+      <HeaderBar collectionName={collectionName} errorCount={errors.length} />
       <div className="app-body">
         <Scriptorium />
         <div className="pane-center" />
