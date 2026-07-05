@@ -220,7 +220,7 @@
   border: 1px solid var(--border-btn);
   border-radius: 3px;
   background: var(--bg-btn);
-  color: #7a6033;
+  color: var(--heading-accent);
   font-size: 15px;
   cursor: pointer;
 }
@@ -312,7 +312,7 @@
   font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 1px;
-  color: #4a3a1e;
+  color: var(--heading);
   margin-bottom: 4px;
 }
 
@@ -397,7 +397,7 @@
   font-family: var(--font-display);
   font-size: 15px;
   letter-spacing: 1.5px;
-  color: #7a6033;
+  color: var(--heading-accent);
 }
 
 .manifest-editor-dirs-add {
@@ -406,7 +406,7 @@
   border: 1px solid var(--border-btn);
   border-radius: 3px;
   background: var(--bg-btn);
-  color: #7a6033;
+  color: var(--heading-accent);
   font-size: 12px;
 }
 
@@ -435,5 +435,5 @@
 
 .manifest-editor-dir-delete:hover {
   background: var(--err-bg);
-  border-color: #b06a6a;
+  border-color: var(--err-border);
 }
