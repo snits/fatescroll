@@ -980,15 +980,15 @@ import { execa } from 'execa';
 const repoRoot = new URL('../../..', import.meta.url).pathname; // adjust to actual depth
 
 const validate = await execa('cargo', ['run', '-p', 'fatescroll-cli', '--quiet', '--',
-  'validate', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
+  'validate', '--collection', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
 expect(validate.exitCode, validate.stderr + validate.stdout).toBe(0);
 
 const roll = await execa('cargo', ['run', '-p', 'fatescroll-cli', '--quiet', '--',
-  'roll', '<compound fqid>', '--manifest', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
+  'roll', '<compound fqid>', '--collection', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
 expect(roll.exitCode, roll.stderr + roll.stdout).toBe(0);
 ```
 
-Check `fatescroll-cli/src/main.rs` for the actual `validate`/`roll` argument shapes before writing (e.g. whether it takes a manifest path positionally). Also add a negative case: a table with a range gap → expect exit code != 0 and stderr mentioning `gap`.
+(Argument shapes verified against `fatescroll-cli/src/main.rs`: both subcommands take `--collection <path>`; `roll` takes the FQID positionally.) Also add a negative case: a table with a range gap → expect exit code != 0 and output mentioning the gap.
 
 - [ ] **Step 2: Run** — `npm test` (cargo build makes first run slow; that's fine). Expect pass.
 - [ ] **Step 3: Commit** `test(webui): golden round-trip through real fatescroll CLI`.
