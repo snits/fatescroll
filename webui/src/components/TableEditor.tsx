@@ -260,7 +260,7 @@ export function TableEditor() {
               key={result.rid}
               result={result}
               dist={dist}
-              modOn={current.modOn}
+              modOn={modActive}
               isUnresolved={isUnresolved}
               onPatch={(p) => patchResult(result.rid, p)}
               onRemove={() => removeResult(result.rid)}
