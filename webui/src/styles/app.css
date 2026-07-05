@@ -1,0 +1,44 @@
+body {
+  background: var(--bg-page);
+  background-image:
+    radial-gradient(circle at top left, rgba(255, 250, 235, 0.5), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(160, 130, 80, 0.1), transparent 55%);
+  color: var(--text);
+  font: 15px var(--font-body);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  flex: 0 0 56px;
+  background: var(--header-bg);
+  color: var(--header-fg);
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+.pane-left {
+  flex: 0 0 264px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+}
+
+.pane-center {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pane-right {
+  flex: 0 0 440px;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+}
