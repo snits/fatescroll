@@ -5,6 +5,14 @@ export function cx(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(' ');
 }
 
+const NUMERIC_DRAFT = /^-?\d*$/;
+
+/** True for a valid in-progress numeric input: digits with an optional leading
+ * minus, including the transient lone "-" before more digits are typed. */
+export function isNumericDraft(value: string): boolean {
+  return NUMERIC_DRAFT.test(value);
+}
+
 export function Field({
   label,
   optional,

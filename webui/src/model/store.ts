@@ -175,3 +175,17 @@ export function fqidOf(state: Pick<ForgeState, 'dirs'>, table: TableDraft): stri
 export function tablesInDir(state: Pick<ForgeState, 'tables'>, dirId: string): TableDraft[] {
   return state.tables.filter((t) => t.dirId === dirId);
 }
+
+// Mirrors the registry's relative-first resolution: a ref resolves if
+// `{fromNamespace}.{ref}` or the bare `{ref}` matches some table's FQID.
+export function refResolves(
+  state: Pick<ForgeState, 'dirs' | 'tables'>,
+  fromNamespace: string,
+  ref: string,
+): boolean {
+  const rel = `${fromNamespace}.${ref}`;
+  return state.tables.some((t) => {
+    const fq = fqidOf(state, t);
+    return fq === rel || fq === ref;
+  });
+}

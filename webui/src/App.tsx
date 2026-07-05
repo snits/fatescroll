@@ -3,6 +3,7 @@ import { useForgeStore } from './model/store';
 import { HeaderBar } from './components/HeaderBar';
 import { ManifestEditor } from './components/ManifestEditor';
 import { Scriptorium } from './components/Scriptorium';
+import { TableEditor } from './components/TableEditor';
 
 export function AppContent() {
   const collectionName = useForgeStore((s) => s.manifest.name);
@@ -14,7 +15,10 @@ export function AppContent() {
       <HeaderBar collectionName={collectionName} errorCount={errors.length} />
       <div className="app-body">
         <Scriptorium />
-        <div className="pane-center">{view === 'manifest' && <ManifestEditor />}</div>
+        <div className="pane-center">
+          {view === 'manifest' && <ManifestEditor />}
+          {view === 'table' && <TableEditor />}
+        </div>
         <div className="pane-right" />
       </div>
     </div>
