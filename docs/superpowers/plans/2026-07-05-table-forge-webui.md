@@ -4,7 +4,7 @@
 
 **Goal:** Build "Table Forge" — a browser-based editor for authoring fatescroll YAML table collections, per the design handoff in `docs/design/table-forge/` — with all validation, dice, and roll logic supplied by `fatescroll-core` compiled to WASM.
 
-**Architecture:** Three-layer split. (1) `fatescroll-core` gains one seam: `build_registry()` — the existing registry-building loop extracted from `load_collection()` so it works on in-memory file contents. (2) A new `fatescroll-wasm` cdylib crate wraps core + diceman behind five JSON-string functions (`validate_collection`, `dice_info`, `expected_values`, `histogram`, `roll_collection`). (3) A React + TypeScript + Vite SPA in `webui/` holds all UI state, emits YAML text, and feeds that YAML to the WASM engine for validation and rolling — the exact same code path the CLI runs on files, so the UI can never drift from `fatescroll validate`.
+**Architecture:** Three-layer split. (1) `fatescroll-core` gains one seam: `build_registry()` — the existing registry-building loop extracted from `load_collection()` so it works on in-memory file contents. (2) A new `fatescroll-wasm` cdylib crate wraps core + diceman behind five JSON-string functions (`validate_collection`, `dice_info`, `expected_values`, `histogram`, `roll_collection`). (3) A React + TypeScript + Vite SPA in `webui/` holds all UI state, emits YAML text, and feeds that YAML to the WASM engine for validation and rolling — the same validation *logic* the CLI runs on files, so the UI can never drift from `fatescroll validate`. (One deliberate difference: the CLI stops before cross-reference checks when any load error exists; the WASM engine always runs both and reports a superset of errors on multi-error collections. Better editor UX — do not "fix" it to match.)
 
 **Tech Stack:** Rust (wasm-bindgen, wasm-pack), React 19 + TypeScript + Vite, Zustand (state), fflate (zip export), @fontsource packages (IM Fell English SC, Spectral, JetBrains Mono), Vitest + Testing Library (unit), execa-driven golden round-trip test against the real CLI.
 
@@ -299,10 +299,31 @@ fn expected_values_modifier_and_digit() {
 }
 
 #[test]
-fn histogram_sums_to_iterations() {
-    let h: serde_json::Value = serde_json::from_str(&histogram("2d6", 10_000, 42)).unwrap();
-    let total: i64 = h["counts"].as_object().unwrap().values().map(|v| v.as_i64().unwrap()).sum();
-    assert_eq!(total, 10_000);
+fn histogram_probabilities_sum_to_one() {
+    let h: serde_json::Value = serde_json::from_str(&histogram("2d6")).unwrap();
+    let outcomes = h["outcomes"].as_array().unwrap();
+    let total: f64 = outcomes.iter().map(|o| o[1].as_f64().unwrap()).sum();
+    assert!((total - 1.0).abs() < 1e-9, "probabilities sum to {total}");
+    // sorted by value, min 2 max 12
+    assert_eq!(outcomes.first().unwrap()[0].as_i64(), Some(2));
+    assert_eq!(outcomes.last().unwrap()[0].as_i64(), Some(12));
+}
+
+#[test]
+fn expected_values_rejects_modifier_on_unsupported_dice() {
+    // validate_table's modifier branch is analytic-only (dice_range); keep/drop
+    // dice with a modifier are invalid tables, so autofill must refuse too.
+    let err: serde_json::Value =
+        serde_json::from_str(&expected_values("4d6kh3", true, 0, 1)).unwrap();
+    assert_eq!(err["ok"].as_bool(), Some(false));
+}
+
+#[test]
+fn expected_values_rejects_negative_envelope() {
+    // validate_table rejects dice whose simulated envelope includes negatives.
+    let err: serde_json::Value =
+        serde_json::from_str(&expected_values("1d6 - 3", false, 0, 0)).unwrap();
+    assert_eq!(err["ok"].as_bool(), Some(false));
 }
 
 #[test]
@@ -418,9 +439,14 @@ pub fn dice_info(expr: &str) -> String {
     }
 }
 
-/// Expected coverage values for a table's results, mirroring validate_table:
-/// digit dice -> exact digit values (modifier rejected); otherwise the
-/// contiguous envelope [dice_min + mod_min, dice_max + mod_max].
+/// Expected coverage values for a table's results, mirroring validate_table's
+/// exact branching (validator.rs:90-159) so autofill can never produce ranges
+/// the validator rejects:
+/// - digit dice -> exact digit values; modifier -> error
+/// - modifier on -> analytic dice_range ONLY (its error propagates; no
+///   simulation fallback — validate_table rejects such tables)
+/// - no modifier -> simulate_seeded envelope, rejecting negatives like the
+///   validator does
 /// {"ok":true,"values":[i64]} or {"ok":false,"reason":String}.
 #[wasm_bindgen]
 pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> String {
@@ -436,17 +462,20 @@ pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> 
         return json!({ "ok": true, "values": fatescroll_core::dice::digit_dice_values(sides, count) })
             .to_string();
     }
-    let (dmin, dmax) = match fatescroll_core::dice::dice_range(expr) {
-        Ok(r) => (r.0 as i64, r.1 as i64),
-        Err(_) => match diceman::simulate_seeded(expr, 100_000, 42) {
+    let (lo, hi) = if mod_on {
+        match fatescroll_core::dice::dice_range(expr) {
+            Ok((dmin, dmax)) => (dmin as i64 + mod_min as i64, dmax as i64 + mod_max as i64),
+            Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
+        }
+    } else {
+        match diceman::simulate_seeded(expr, 100_000, 42) {
+            Ok(sim) if sim.min < 0 || sim.max < 0 => {
+                return json!({ "ok": false, "reason": "dice range includes negative values" })
+                    .to_string();
+            }
             Ok(sim) => (sim.min, sim.max),
             Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
-        },
-    };
-    let (lo, hi) = if mod_on {
-        (dmin + mod_min as i64, dmax + mod_max as i64)
-    } else {
-        (dmin, dmax)
+        }
     };
     if lo > hi || hi - lo > 100_000 {
         return json!({ "ok": false, "reason": "envelope reversed or too wide" }).to_string();
@@ -454,27 +483,23 @@ pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> 
     json!({ "ok": true, "values": (lo..=hi).collect::<Vec<i64>>() }).to_string()
 }
 
-/// Seeded sampling histogram for probability pills.
-/// {"ok":true,"iterations":u32,"counts":{"<value>":count}} or {"ok":false,...}.
+/// Probability distribution for the editor's probability pills, from the same
+/// seeded simulation the validator uses. Returns outcomes sorted by value:
+/// {"ok":true,"outcomes":[[value, probability], ...]} or {"ok":false,"reason":...}.
 #[wasm_bindgen]
-pub fn histogram(expr: &str, iterations: u32, seed: u64) -> String {
-    if let Err(e) = diceman::parse(expr) {
-        return json!({ "ok": false, "reason": e.to_string() }).to_string();
-    }
-    let mut rng = diceman::FastRng::with_seed(seed);
-    let mut counts: std::collections::BTreeMap<i64, u32> = std::collections::BTreeMap::new();
-    for _ in 0..iterations {
-        match diceman::roll_with_rng(expr, &mut rng) {
-            Ok(r) => match r.as_numeric() {
-                Some(v) => *counts.entry(v).or_insert(0) += 1,
-                None => {
-                    return json!({ "ok": false, "reason": "non-numeric roll result" }).to_string()
-                }
-            },
-            Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
+pub fn histogram(expr: &str) -> String {
+    match diceman::simulate_seeded(expr, 100_000, 42) {
+        Ok(sim) => {
+            let n = sim.n as f64;
+            let outcomes: Vec<(i64, f64)> = sim
+                .sorted_outcomes()
+                .into_iter()
+                .map(|(v, count)| (v, count as f64 / n))
+                .collect();
+            json!({ "ok": true, "outcomes": outcomes }).to_string()
         }
+        Err(e) => json!({ "ok": false, "reason": e.to_string() }).to_string(),
     }
-    json!({ "ok": true, "iterations": iterations, "counts": counts }).to_string()
 }
 
 /// Roll a table (by FQID) against the in-memory collection. Returns the
@@ -497,7 +522,7 @@ pub fn roll_collection(manifest_yaml: &str, files_json: &str, fqid: &str, seed: 
 }
 ```
 
-Adjust to actual APIs while implementing (e.g. `RollResult::as_numeric` signature from diceman v0.4.0, `roller::roll_with_rng` path — see `fatescroll-core/src/roller.rs:32`). If `dice_range`'s error type needs unwrapping, match on `fatescroll_core::Error::Validation`.
+API notes (verified against diceman v0.4.0 source): `simulate_seeded(expr, n, seed) -> Result<SimResult>` where `SimResult { distribution, min, max, n, .. }` provides `sorted_outcomes() -> Vec<(i64, usize)>`; if you ever need per-roll values, the accessor is `roll_result.outcome.as_numeric() -> Option<i64>` (there is no `RollResult::as_numeric`); core's roller entry point is `fatescroll_core::roller::roll_with_rng(&Registry, &str, &mut impl diceman::Rng)` (`roller.rs:32`). If `dice_range`'s error type needs unwrapping, match on `fatescroll_core::Error::Validation`.
 
 - [ ] **Step 5: Run tests** — `cargo test -p fatescroll-wasm` → all pass. `cargo clippy -- -D warnings` and `cargo fmt --check` clean (pre-commit runs these).
 
@@ -508,7 +533,7 @@ wasm-pack build fatescroll-wasm --target web --out-dir ../webui-pkg-check
 rm -rf webui-pkg-check
 ```
 
-Expected: build succeeds. If fastrand fails to compile for wasm32, add `fastrand = { version = "2", features = ["js"] }` to fatescroll-wasm deps (feature unification fixes the transitive dep) and note it in the commit message.
+Expected: build succeeds. (Dependency tree verified wasm-safe: fastrand 2.3 is zero-dep — no getrandom — and the wasm crate only uses `FastRng::with_seed`, never entropy; `yaml_serde` 0.10 is pure Rust.)
 
 - [ ] **Step 7: Commit**
 
@@ -636,7 +661,7 @@ export type View = 'empty' | 'manifest' | 'table';
 
 `ids.ts`: `export const uid = () => crypto.randomUUID();`
 
-- [ ] **Step 2: Failing store tests** (`tests/store.test.ts`) — cover: initial state (`view === 'empty'`, one default dir? **No** — start with zero dirs, manifest defaults `{name:'New Collection', version:'1.0', namespace:'collection', author:'', minToolVersion:''}`); `addDir` selects manifest view; `addTable(dirId)` creates a simple table with one blank result and selects it; `updateTable` patches and clears `rollLines`; `deleteTable` selects next remaining table else `empty`; `deleteDir` removes its tables; `fqid(table)` = `dir.namespace + '.' + stem`; stem setter replaces whitespace with `-`.
+- [ ] **Step 2: Failing store tests** (`tests/store.test.ts`) — cover: initial state (`view === 'empty'`, one default dir? **No** — start with zero dirs, manifest defaults `{name:'New Collection', version:'1.0', namespace:'collection', author:'', minToolVersion:''}`); `addDir` selects manifest view; `addTable(dirId)` creates a simple table with one blank result and selects it; `updateTable` patches and clears `rollLines`; `deleteTable` selects next remaining table else `empty`; `deleteDir` removes its tables; `fqidOf(state, table)` = `dir.namespace + '.' + stem`; stem setter replaces whitespace with `-`.
 
 - [ ] **Step 3: Run** — `npm test` → fails (store missing).
 
@@ -658,7 +683,7 @@ interface ForgeState {
 export interface RollLine { indent: number; text: string; error?: boolean }
 ```
 
-Every mutating action also sets `rollLines: null` (handoff §Interactions). New table defaults: `stem: 'new-table'`, `name: 'New Table'`, `type: 'simple'`, `roll: '1d6'`, one result `{min:'1',max:'6',text:'',chain:[]}`. Selectors as plain functions: `fqidOf(state, table)`, `tablesInDir(state, dirId)`.
+Every mutating action also sets `rollLines: null` (handoff §Interactions). New table defaults: `stem: 'new-table'`, `name: 'New Table'`, `type: 'simple'`, `roll: '1d6'`, one result `{min:'1',max:'6',text:'',chain:[]}`. New dir defaults: `{path: '', namespace: manifest.namespace}` — duplicate stems/paths across adds are flagged by live validation, which is enough for v1. Selectors as plain functions (single canonical names used by all later tasks): `fqidOf(state, table)`, `tablesInDir(state, dirId)`.
 
 - [ ] **Step 5: Run tests → pass. Commit** `feat(webui): domain model and store`.
 
@@ -670,7 +695,7 @@ Every mutating action also sets `rollLines: null` (handoff §Interactions). New 
 - Create: `webui/src/yaml/emit.ts`
 - Test: `webui/tests/emit.test.ts`
 
-- [ ] **Step 1: Failing tests.** Assert exact output strings for: (a) manifest with author set and empty minToolVersion (→ `min_tool_version: ~`), version always double-quoted, directories list matching `~/rpgs/tables/kal-arath/manifest.yaml` shape; (b) simple table with tags, d66 roll, quoted text containing `: ` and `{d6}` braces, plain + structured chain entries; (c) `modifier_range: [-2, 0]`; (d) notes list; (e) compound table `tables:` list; (f) `yv()` cases: `''`→`""`, `No, and`→needs quoting? (comma alone doesn't force quoting in YAML, but leading indicator/`: `/keywords do — assert `yes`→`"yes"`, `12`→`"12"`, `has: colon`→quoted, `{d6} braces`→quoted, plain `Bandits`→unquoted, backslash/quote escaping).
+- [ ] **Step 1: Failing tests.** Assert exact output strings for: (a) manifest with author set and empty minToolVersion (→ `min_tool_version: ~`), version always double-quoted, directories list matching `~/rpgs/tables/kal-arath/manifest.yaml` shape; (b) simple table with tags, d66 roll, quoted text containing `: ` and `{d6}` braces, plain + structured chain entries; (c) `modifier_range: [-2, 0]`; (d) notes list; (e) compound table `tables:` list; (f) `yv()` cases: `''`→`""`, assert `yes`→`"yes"`, `12`→`"12"`, `has: colon`→quoted, trailing colon `Roll again:`→quoted, embedded newline `a\nb`→`"a\nb"` (escaped, NOT a raw newline in the output), tab and `\r` escaped, `{d6} braces`→quoted, `.inf`→quoted, plain `Bandits`→unquoted, backslash/quote escaping; (g) `numOr0`: `''`→0, `-`→0, `-3`→-3.
 
 - [ ] **Step 2: Run → fail.**
 
@@ -684,11 +709,27 @@ export function yv(s: string): string {
     s === '' || /^\s|\s$/.test(s) ||
     /^[-?:,[\]{}#&*!|>'"%@`]/.test(s) ||
     /[{}[\]]/.test(s) ||
-    s.includes(': ') || s.includes(' #') ||
+    /:(\s|$)/.test(s) || s.includes(' #') ||
+    /[\n\r\t]/.test(s) ||
     KEYWORDS.has(s.toLowerCase()) ||
-    /^[+-]?\d+(\.\d+)?$/.test(s);
+    /^[+-]?(\d|\.inf|\.nan)/i.test(s);
   if (!needsQuote) return s;
-  return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  // Escape order matters: backslashes first, then quotes and control chars.
+  // Unescaped newlines inside a double-quoted scalar would FOLD to spaces on
+  // parse (silent data loss), so \n\r\t must be escaped, not emitted raw.
+  const escaped = s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+  return `"${escaped}"`;
+}
+
+/** Raw numeric-input string -> integer for emission ('' or lone '-' -> 0). */
+export function numOr0(raw: string): number {
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? 0 : n;
 }
 
 export function manifestYaml(m: ManifestState, dirs: Dir[]): string {
@@ -717,14 +758,14 @@ export function tableYaml(t: TableDraft): string {
     for (const r of t.tableRefs) lines.push(`  - ${yv(r.ref)}`);
   } else {
     lines.push(`roll: ${t.roll}`);
-    if (t.modOn) lines.push(`modifier_range: [${t.modMin || 0}, ${t.modMax || 0}]`);
+    if (t.modOn) lines.push(`modifier_range: [${numOr0(t.modMin)}, ${numOr0(t.modMax)}]`);
     if (t.notes.length) {
       lines.push('notes:');
       for (const n of t.notes) lines.push(`  - ${yv(n)}`);
     }
     lines.push('results:');
     for (const r of t.results) {
-      lines.push(`  - min: ${r.min || 0}`, `    max: ${r.max || 0}`);
+      lines.push(`  - min: ${numOr0(r.min)}`, `    max: ${numOr0(r.max)}`);
       if (r.text) lines.push(`    text: ${yv(r.text)}`);
       if (r.chain.length) {
         lines.push('    chain:');
@@ -779,14 +820,25 @@ export interface Engine {
   validate(manifestYaml: string, files: FileInput[]): string[];
   diceInfo(expr: string): DiceInfo;
   expectedValues(expr: string, modOn: boolean, modMin: number, modMax: number): number[] | null;
-  histogram(expr: string): { iterations: number; counts: Record<string, number> } | null;
+  histogram(expr: string): [value: number, probability: number][] | null;
   roll(manifestYaml: string, files: FileInput[], fqid: string): RollNode | { error: string };
 }
 ```
 
-WASM impl: `async function initEngine(): Promise<Engine>` — calls the pkg's default `init(new URL('../wasm/pkg/fatescroll_wasm_bg.wasm', import.meta.url))`, then wraps each fn with `JSON.parse`. Seeds: `crypto.getRandomValues(new BigUint64Array(1))[0]` per call for `roll`; fixed `42n` for `histogram` (stable pills). Memoize `diceInfo`/`histogram`/`expectedValues` in a `Map` keyed by args (cleared never — expressions are tiny).
+WASM impl: `async function initEngine(): Promise<Engine>` — calls the pkg's default `init(new URL('../wasm/pkg/fatescroll_wasm_bg.wasm', import.meta.url))`, then wraps each fn with `JSON.parse`. Seed for `roll`: `crypto.getRandomValues(new BigUint64Array(1))[0]` per call (`histogram` is internally seeded — stable pills). Memoize `diceInfo`/`histogram`/`expectedValues` in a `Map` keyed by args (never cleared — expressions are tiny).
 
-- [ ] **Step 2: `useEngine.ts`** — React context providing the Engine after async init (render "Loading engine…" until ready), plus a `useDerived()` hook: subscribes to the store, computes (150ms debounce) `{ files, manifestYaml, errors, currentYaml, currentTitle }` where `currentYaml` is `manifestYaml` for manifest/empty view or `tableYaml(selected)` for table view. Unit-test the derivation logic with a fake Engine (no WASM in jsdom).
+- [ ] **Step 2: `useEngine.ts`** — **testability is designed in, not bolted on:**
+
+```tsx
+export function EngineProvider({ engine, debounceMs = 150, children }: {
+  engine?: Engine;            // tests inject a fake; production omits it
+  debounceMs?: number;        // tests pass 0 to make derivation synchronous-ish
+  children: ReactNode;
+}) { /* if engine prop present, skip initEngine(); else async init with
+       "Loading engine…" fallback */ }
+```
+
+Real WASM cannot initialize under jsdom, so **every component test (Tasks 7–10) renders inside `<EngineProvider engine={fakeEngine} debounceMs={0}>`** and uses Testing Library `findBy*`/`waitFor` for post-debounce assertions — no fake timers needed. Also `useDerived()`: subscribes to the store, computes (debounced) `{ files, manifestYaml, errors, currentYaml, currentTitle }` where `currentYaml` is `manifestYaml` for manifest/empty view or `tableYaml(selected)` for table view. Unit-test the derivation logic with a fake Engine.
 
 - [ ] **Step 3: Commit** `feat(webui): engine bridge with debounced collection validation`.
 
@@ -799,7 +851,7 @@ WASM impl: `async function initEngine(): Promise<Engine>` — calls the pkg's de
 - Modify: `webui/src/App.tsx`
 - Test: `webui/tests/components/scriptorium.test.tsx`
 
-- [ ] **Step 1: Failing component tests** (Testing Library, fake engine ctx): tree renders manifest node + a dir header (`path/` + namespace) + table rows with `smp`/`cmp` badges; clicking a table row selects it (store `selUid` updates, row gets selected class); dir `+` adds a table to that dir; "+ add directory" adds a dir and opens manifest view; header status pill shows "Collection is valid" with 0 errors and "N error(s)" with N>0.
+- [ ] **Step 1: Failing component tests** (rendered inside `<EngineProvider engine={fakeEngine} debounceMs={0}>`): tree renders manifest node + a dir header (`path/` + namespace) + table rows with `smp`/`cmp` badges; clicking a table row selects it (store `selUid` updates, row gets selected class); clicking a dir header opens the manifest view (handoff §Left rail); dir `+` adds a table to that dir; "+ add directory" adds a dir and opens manifest view; header status pill shows "Collection is valid" with 0 errors and "N error(s)" with N>0.
 
 - [ ] **Step 2: Implement** per handoff §Header bar / §Left rail: brand block ("Fatescroll" / "TABLE FORGE" in `--font-display`), divider, COLLECTION label + manifest name, spacer, status pill (green/amber variants incl. dot glow `box-shadow: 0 0 8px`), "Export collection ▾" gold button (wired in Task 11 — until then `disabled`). Tree: manifest ⚜ node, per-dir header + `+`, indented table rows with left-accent selection, dashed "+ add directory". All colors via tokens; exact values in handoff §Screens.
 
@@ -828,9 +880,9 @@ WASM impl: `async function initEngine(): Promise<Engine>` — calls the pkg's de
 
 - [ ] **Step 1: Failing logic tests.**
 
-`autofill.test.ts`: (a) `1d6` with 3 results → ranges `[1,2],[3,4],[5,6]`; (b) `2d6` (span 2–12, 11 values) with 3 results → sizes 4/4/3 → `[2,5],[6,9],[10,12]` (larger chunks first); (c) modifier `1d8 + [0,6]` span 1–14 with 2 results → `[1,7],[8,14]`; (d) digit values (D66) with 2 existing results → 36 rows, one per value, rows 0–1 keep their text/chain; (e) empty results → unchanged.
+`autofill.test.ts`: (a) `1d6` with 3 results → ranges `[1,2],[3,4],[5,6]`; (b) `2d6` (span 2–12, 11 values) with 3 results → sizes 4/4/3 → `[2,5],[6,9],[10,12]` (larger chunks first); (c) modifier `1d8 + [0,6]` span 1–14 with 2 results → `[1,7],[8,14]`; (d) digit values (D66) with 2 existing results → 36 rows, one per value, rows 0–1 keep their text/chain; (e) empty results → unchanged; (f) **more rows than values**: `1d6` with 8 results → exactly 6 rows `[1,1]..[6,6]` preserving the first 6 rows' text/chain — surplus rows are DROPPED, never collapsed into duplicate ranges (core would reject the overlap).
 
-`probability.test.ts`: histogram `{counts:{'2':278,'3':556,...}, iterations:10000}` + range → summed pct; formatting: `0%`, `<10%` one decimal (`2.8%`), `≥10%` integer (`17%`), unparseable → `—`.
+`probability.test.ts`: distribution `[[2,0.0278],[3,0.0556],...]` + range → summed probability; formatting: `0%`, `<10%` one decimal (`2.8%`), `≥10%` integer (`17%`), null → `—`.
 
 - [ ] **Step 2: Implement logic** (complete):
 
@@ -851,15 +903,17 @@ export function autofillRanges(
       };
     });
   }
-  const k = results.length;
+  // Contiguous path: at most one row per value; surplus rows are dropped
+  // (collapsing them onto the last value would create overlaps core rejects).
+  const rows = results.slice(0, values.length);
+  const k = rows.length;
   if (k === 0) return results;
   const n = values.length;
   const base = Math.floor(n / k), extra = n % k;
   let idx = 0;
-  return results.map((r, i) => {
-    const size = Math.min(base + (i < extra ? 1 : 0), n - idx) || 1;
-    const lo = values[Math.min(idx, n - 1)];
-    const hi = values[Math.min(idx + size - 1, n - 1)];
+  return rows.map((r, i) => {
+    const size = base + (i < extra ? 1 : 0);
+    const lo = values[idx], hi = values[idx + size - 1];
     idx += size;
     return { ...r, min: String(lo), max: String(hi) };
   });
@@ -867,16 +921,13 @@ export function autofillRanges(
 
 // probability.ts
 export function rangeProbability(
-  hist: { iterations: number; counts: Record<string, number> } | null,
+  dist: [value: number, probability: number][] | null,
   min: number, max: number,
 ): number | null {
-  if (!hist || Number.isNaN(min) || Number.isNaN(max)) return null;
+  if (!dist || Number.isNaN(min) || Number.isNaN(max)) return null;
   let sum = 0;
-  for (const [v, c] of Object.entries(hist.counts)) {
-    const n = Number(v);
-    if (n >= min && n <= max) sum += c;
-  }
-  return sum / hist.iterations;
+  for (const [v, p] of dist) if (v >= min && v <= max) sum += p;
+  return sum;
 }
 export function formatPct(p: number | null): string {
   if (p === null) return '—';
@@ -886,7 +937,7 @@ export function formatPct(p: number | null): string {
 }
 ```
 
-- [ ] **Step 3: Failing component tests:** name/stem/type controls bound (stem sanitizes whitespace→`-`; type switch preserves the draft's other-type fields — no data loss switching simple→compound→simple); FQID line shows `namespace.stem`; roll input shows engine info line (`range 2–12 · 11 outcome(s)` / `D66 · 36 outcomes (11–66)` / `unparseable dice expression` styling per handoff); modifier checkbox disabled + unchecked when `kind === 'digit'`; modifier numeric inputs accept `-6`; Auto-fill button calls `autofillRanges` with `engine.expectedValues(...)`; result card shows probability pill; chain row `↺` toggles struct (revealing reroll input, comma-separated ints); delete table confirms; compound editor lists `◈` ref rows.
+- [ ] **Step 3: Failing component tests** (all rendered inside `<EngineProvider engine={fakeEngine} debounceMs={0}>`): name/stem/type controls bound (stem sanitizes whitespace→`-`; type switch preserves the draft's other-type fields — no data loss switching simple→compound→simple); FQID line shows `namespace.stem`; roll input shows engine info line (`range 2–12 · 11 outcome(s)` / `D66 · 36 outcomes (11–66)` / `unparseable dice expression` styling per handoff); modifier checkbox disabled + unchecked when `kind === 'digit'`; modifier numeric inputs accept `-6`; Auto-fill button first reads `engine.diceInfo(roll).kind` to derive `kind: 'digit' | 'contiguous'`, then calls `autofillRanges(results, engine.expectedValues(roll, modOn, modMin, modMax), kind)` — and does nothing (button disabled) when `expectedValues` returns null; result card shows probability pill, but pills render `—` when `modOn` (the raw-dice distribution doesn't include per-use modifiers, so a percentage would mislead); chain row `↺` toggles struct (revealing reroll input, comma-separated ints); delete table confirms (`vi.spyOn(window, 'confirm')`); compound editor lists `◈` ref rows.
 
 - [ ] **Step 4: Implement components** per handoff §Table editor (max-width 720px; segmented type control; result cards with gold left accent; dotted chain block; notes textarea one-per-line ↔ `notes: string[]`). Number inputs: `value` bound to raw string, `onChange` strips everything but digits and a leading `-`.
 
@@ -900,7 +951,7 @@ export function formatPct(p: number | null): string {
 - Create: `webui/src/components/RightPane.tsx`, `YamlViewer.tsx`, `ValidationPanel.tsx`, `DiceRoller.tsx`
 - Test: `webui/tests/components/right-pane.test.tsx`
 
-- [ ] **Step 1: Failing tests:** title reflects view (`MANIFEST.YAML` / `<STEM>.YAML` / `YAML`); copy button writes `currentYaml` to clipboard and flips label `⧉ copy`→`✓ copied` for 1.4s; ⬇ downloads current file; validation panel green `✓ Collection is valid.` when no errors, else one mono line per engine message with `✕` prefix; Roll button calls `engine.roll(manifest, files, fqidOf(selected))` and renders the tree flattened to `RollLine[]` (`indent*18px` padding, depth-0 dark, deeper `#6b5535`, `error` lines red); editing any field clears the output back to the placeholder (store already nulls `rollLines`).
+- [ ] **Step 1: Failing tests** (inside `<EngineProvider engine={fakeEngine} debounceMs={0}>`): title reflects view (`MANIFEST.YAML` / `<STEM>.YAML` / `YAML`); copy button writes `currentYaml` to clipboard (`userEvent.setup()` provides a clipboard stub) and flips label `⧉ copy`→`✓ copied` for 1.4s; ⬇ downloads current file (keep the anchor-click wiring thin — assert filename/content generation, not the DOM click; jsdom has no `URL.createObjectURL`); validation panel green `✓ Collection is valid.` when no errors, else one mono line per engine message with `✕` prefix (errors only — core has no warning channel, so the handoff's amber `!` styling is intentionally not wired); **Roll button computes `manifestYaml(...)` and `collectionFiles(dirs, tables)` from CURRENT store state at click time** — never from the debounced `useDerived` values, or a roll within 150ms of an edit rolls stale YAML — then calls `engine.roll(...)` with `fqidOf` of the selected table and renders the tree flattened to `RollLine[]` (`indent*18px` padding, depth-0 dark, deeper `#6b5535`, `error` lines red); editing any field clears the output back to the placeholder (store already nulls `rollLines`).
 
 Tree flattening:
 
@@ -973,22 +1024,35 @@ The proof the whole stack works: state → emitter → files on disk → **actua
 
 - [ ] **Step 1: Write the test** (vitest, `environment: 'node'` via `// @vitest-environment node`):
 
-Build an in-memory state exercising every feature: two dirs (`core`, `core/weather`), a `D66` table with text interpolation `{2d6}` and a structured chain (`table: <self-ns ref>, reroll: [11]`), a `1d8` table with `modifier_range: [-2, 0]` and full envelope coverage `[-1..8]`, a compound table referencing both, tags and notes. Emit with `manifestYaml()`/`collectionFiles()`, write to `fs.mkdtempSync`, then:
+Build an in-memory state exercising every feature: two dirs (`core`, `core/weather`), a `D66` table with text interpolation `{2d6}` and a structured self-chain **on entry 11** with `reroll: [11]` (pinning the chain to the entry equal to the reroll value makes the child provably land elsewhere and terminate at depth 1 — on any other entry, re-hitting it has a geometric tail toward the depth-10 limit), a `1d8` table with `modifier_range: [-2, 0]` and full envelope coverage `[-1..8]`, a compound table referencing both, tags and notes. Emit with `manifestYaml()`/`collectionFiles()`, write to `fs.mkdtempSync`, then:
 
 ```ts
 import { execa } from 'execa';
-const repoRoot = new URL('../../..', import.meta.url).pathname; // adjust to actual depth
+import { fileURLToPath } from 'node:url';
+const repoRoot = fileURLToPath(new URL('../..', import.meta.url)); // tests/ -> webui/ -> repo root
 
-const validate = await execa('cargo', ['run', '-p', 'fatescroll-cli', '--quiet', '--',
-  'validate', '--collection', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
+beforeAll(async () => {
+  // Pay the compile cost once, then invoke the binary directly.
+  await execa('cargo', ['build', '-p', 'fatescroll-cli'], { cwd: repoRoot });
+}, 300_000);
+const bin = `${repoRoot}/target/debug/fatescroll`;
+
+const validate = await execa(bin, ['validate', '--collection', `${tmp}/manifest.yaml`], { reject: false });
 expect(validate.exitCode, validate.stderr + validate.stdout).toBe(0);
 
-const roll = await execa('cargo', ['run', '-p', 'fatescroll-cli', '--quiet', '--',
-  'roll', '<compound fqid>', '--collection', `${tmp}/manifest.yaml`], { cwd: repoRoot, reject: false });
+// Deterministic chain proof: the CLI has no --seed, so force the D66 lookup
+// value with --value 11 — exercises {2d6} interpolation AND the reroll chain.
+const chained = await execa(bin, ['roll', '<d66 fqid>', '--value', '11',
+  '--collection', `${tmp}/manifest.yaml`], { reject: false });
+expect(chained.exitCode, chained.stderr + chained.stdout).toBe(0);
+
+// Smoke: compound wires everything together (random, so assert exit only).
+const roll = await execa(bin, ['roll', '<compound fqid>',
+  '--collection', `${tmp}/manifest.yaml`], { reject: false });
 expect(roll.exitCode, roll.stderr + roll.stdout).toBe(0);
 ```
 
-(Argument shapes verified against `fatescroll-cli/src/main.rs`: both subcommands take `--collection <path>`; `roll` takes the FQID positionally.) Also add a negative case: a table with a range gap → expect exit code != 0 and output mentioning the gap.
+Give the test file a generous timeout (`test('...', async () => {...}, 120_000)` or per-file `testTimeout`) — never rely on vitest's 5s default. (Argument shapes verified against `fatescroll-cli/src/main.rs`: `validate --collection <path>`; `roll <fqid> --collection <path>` with optional `--value <n>` direct lookup.) Also add a negative case: a table with a range gap → expect exit code != 0 and output mentioning the gap.
 
 - [ ] **Step 2: Run** — `npm test` (cargo build makes first run slow; that's fine). Expect pass.
 - [ ] **Step 3: Commit** `test(webui): golden round-trip through real fatescroll CLI`.
@@ -1010,4 +1074,5 @@ expect(roll.exitCode, roll.stderr + roll.stdout).toBe(0);
 - Handoff §Dice engine is deliberately **not** ported (deltas table #1) — `dice_info`/`histogram`/`expected_values` replace `diceInfo`/`sampleRoll`; text interpolation happens inside core's roller (`roller.rs` `DICE_INTERPOLATION`), so the UI never interpolates.
 - Handoff's per-view YAML/validation/roller behavior: covered by Tasks 6 + 10. Zip layout, slug, copy/download: Tasks 10–11. All §Interactions items are asserted in component tests (selection swap, rollLines clear, confirms, stem sanitize, tag split, copy animation).
 - The prototype's `makeZip`/`crc32` are replaced by fflate per handoff's explicit permission ("or replace with the target platform's zip library").
-- Verify during Task 2 whether `diceman::RollResult::as_numeric` returns `Option<i64>` (per commit c27ac93) and the exact `roll_with_rng` re-export path; the plan's code compiles against those assumptions and must be adjusted in-place if signatures differ.
+- Domain-reviewed 2026-07-05 by three expert agents (WASM boundary, frontend architecture, YAML/dice correctness); all Critical/Important findings are folded into the task text above: `expected_values` mirrors `validate_table`'s exact branches, `histogram` reuses `simulate_seeded` (no per-roll accessor needed), `yv()` escapes control characters, autofill drops surplus rows instead of overlapping, `EngineProvider` takes injectable `engine`/`debounceMs`, the golden test builds the CLI once in `beforeAll` and forces the chain with `--value 11`.
+- For `kind: "range"|"simulated"`, `dice_info.outcomes` is envelope width (`max-min+1`), not true outcome cardinality for gappy distributions — it's a UI hint; don't write tests asserting cardinality on exotic expressions.
