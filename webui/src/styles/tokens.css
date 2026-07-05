@@ -18,6 +18,11 @@ body { margin: 0; }
   --err: #a11f1f;            --err-2: #9a3030;         --err-border: #b05a5a;
   --err-bg: #f0dede;         --warn: #9c6a2f;
   --cmp-bg: #e2d3ea;         --cmp-fg: #6a4a86;
+  --hover-row: #e7dcbe;      --hover-btn: #eadfbf;     --hover-border: #a98f63;
+  --status-ok-dot: #8fbf6a;  --status-ok-border: #5f7a3a;
+  --status-ok-bg: rgba(120, 160, 80, 0.18);            --status-ok-fg: #dbe7b8;
+  --status-bad-dot: #d98a5a; --status-bad-border: #9c5a34;
+  --status-bad-bg: rgba(180, 90, 50, 0.18);            --status-bad-fg: #eec6a6;
   --yaml-bg: #241d12;        --yaml-border: #2f2718;   --yaml-fg: #d9c99a;
   --chain-border: #c3a86e;
   --font-display: 'IM Fell English SC', serif;

@@ -20,7 +20,7 @@ function TreeTable({
   return (
     <button
       type="button"
-      className={selected ? 'tree-table selected' : 'tree-table'}
+      className={selected ? 'tree-table tree-table--selected' : 'tree-table'}
       onClick={onSelect}
     >
       <span className={badgeClass}>{typeShort}</span>
@@ -92,10 +92,12 @@ export function Scriptorium() {
       <div className="scriptorium-body">
         <button
           type="button"
-          className={view === 'manifest' ? 'tree-manifest selected' : 'tree-manifest'}
+          className={view === 'manifest' ? 'tree-manifest tree-manifest--selected' : 'tree-manifest'}
           onClick={selectManifest}
         >
-          <span className="tree-manifest-glyph">⚜</span>
+          <span className="tree-manifest-glyph" aria-hidden="true">
+            ⚜
+          </span>
           <span className="tree-manifest-name">manifest.yaml</span>
         </button>
 
