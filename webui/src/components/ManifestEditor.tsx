@@ -4,43 +4,7 @@
 import { isValidNamespace } from '../logic/namespace';
 import { tablesInDir, useForgeStore } from '../model/store';
 import type { Dir } from '../model/types';
-
-function cx(...parts: Array<string | false | undefined>): string {
-  return parts.filter(Boolean).join(' ');
-}
-
-function Field({
-  label,
-  optional,
-  mono,
-  invalid,
-  placeholder,
-  value,
-  onChange,
-}: {
-  label: string;
-  optional?: boolean;
-  mono?: boolean;
-  invalid?: boolean;
-  placeholder?: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="field-label">
-      <span className="field-label-text">
-        {label}
-        {optional && <span className="field-label-optional"> (optional)</span>}
-      </span>
-      <input
-        className={cx('field-input', mono && 'field-input--mono', invalid && 'field-input--invalid')}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
-  );
-}
+import { cx, Field } from './Field';
 
 function DirRow({
   dir,
