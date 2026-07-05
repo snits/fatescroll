@@ -51,6 +51,19 @@ describe('addDir', () => {
     useForgeStore.getState().addDir();
     expect(useForgeStore.getState().rollLines).toBeNull();
   });
+
+  it('clears the table selection when switching to the manifest view', () => {
+    useForgeStore.getState().addDir();
+    const dirId = useForgeStore.getState().dirs[0].id;
+    useForgeStore.getState().addTable(dirId);
+    expect(useForgeStore.getState().selUid).not.toBeNull();
+
+    useForgeStore.getState().addDir();
+
+    const state = useForgeStore.getState();
+    expect(state.view).toBe('manifest');
+    expect(state.selUid).toBeNull();
+  });
 });
 
 describe('addTable', () => {
@@ -110,6 +123,17 @@ describe('updateTable', () => {
     useForgeStore.getState().updateTable(uid, { stem: 'my  cool table' });
 
     expect(useForgeStore.getState().tables[0].stem).toBe('my-cool-table');
+  });
+
+  it('trims leading and trailing whitespace from stem before hyphenating', () => {
+    useForgeStore.getState().addDir();
+    const dirId = useForgeStore.getState().dirs[0].id;
+    useForgeStore.getState().addTable(dirId);
+    const uid = useForgeStore.getState().tables[0].uid;
+
+    useForgeStore.getState().updateTable(uid, { stem: ' my table ' });
+
+    expect(useForgeStore.getState().tables[0].stem).toBe('my-table');
   });
 });
 
@@ -182,6 +206,22 @@ describe('deleteTable', () => {
     expect(state.tables).toHaveLength(0);
     expect(state.view).toBe('empty');
     expect(state.selUid).toBeNull();
+  });
+
+  it('leaves the current selection untouched when deleting a non-selected table', () => {
+    useForgeStore.getState().addDir();
+    const dirId = useForgeStore.getState().dirs[0].id;
+    useForgeStore.getState().addTable(dirId);
+    useForgeStore.getState().addTable(dirId);
+    const [first, second] = useForgeStore.getState().tables;
+    useForgeStore.getState().selectTable(first.uid);
+
+    useForgeStore.getState().deleteTable(second.uid);
+
+    const state = useForgeStore.getState();
+    expect(state.tables.map((t) => t.uid)).toEqual([first.uid]);
+    expect(state.selUid).toBe(first.uid);
+    expect(state.view).toBe('table');
   });
 
   it('clears rollLines', () => {
