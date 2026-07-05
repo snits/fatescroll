@@ -36,7 +36,7 @@ The product of this tool is YAML. Judge the YAML.
 
 **Checks (perform, don't trust):**
 1. In the running app, build a collection exercising: two directories (one nested, e.g. `core/weather`), a `D66` table with `{2d6}` text interpolation and a structured chain (`table:` + `reroll:`), a `1d8` table with `modifier_range` (use a negative min) and full coverage, tags, notes, and a compound table. Export the zip.
-2. Unzip and run `cargo run -p fatescroll-cli -- validate <dir>/manifest.yaml` → must exit 0.
+2. Unzip and run `cargo run -p fatescroll-cli -- validate --collection <dir>/manifest.yaml` → must exit 0.
 3. Run `roll` on the compound table's FQID → must exit 0 and show chained children.
 4. Diff the exported `manifest.yaml` shape against `~/rpgs/tables/kal-arath/manifest.yaml` / `tests/fixtures/valid-collection/` (field order, `version` double-quoted, `~` for absent author/min_tool_version, `directories:` entries).
 5. Introduce a range gap in the UI; confirm the right pane shows the core error (message containing `gap`), export anyway, and confirm CLI `validate` rejects it with the same class of error.
