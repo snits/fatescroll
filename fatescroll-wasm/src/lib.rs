@@ -2,8 +2,8 @@
 // ABOUTME: to the Table Forge webui. All I/O is JSON strings; RNG seeds come from JS.
 
 use fatescroll_core::collection::CollectionFile;
-use fatescroll_core::models::Manifest;
-use fatescroll_core::validator::validate_references;
+use fatescroll_core::models::{Manifest, ModifierRange};
+use fatescroll_core::validator::{EnvelopeError, outcome_envelope, validate_references};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
@@ -93,15 +93,14 @@ pub fn dice_info(expr: &str) -> String {
     }
 }
 
-/// Expected coverage values for a table's results, mirroring validate_table's
-/// exact branching (validator.rs:90-159) so autofill can never produce ranges
-/// the validator rejects:
-/// - digit dice -> exact digit values; modifier -> error
-/// - modifier on -> analytic dice_range ONLY (its error propagates; no
-///   simulation fallback — validate_table rejects such tables)
-/// - no modifier -> simulate_seeded envelope, rejecting negatives like the
-///   validator does
-/// {"ok":true,"values":[i64]} or {"ok":false,"reason":String}.
+/// Expected coverage values for a table's results, so autofill can never
+/// produce ranges the validator rejects. Digit dice (D66, ...) yield their
+/// exact non-contiguous values (a modifier on them is an error); every other
+/// expression's envelope comes from the validator's own
+/// `fatescroll_core::validator::outcome_envelope` — analytic when a modifier
+/// is present, seeded simulation otherwise, rejecting reversed modifier
+/// ranges, negative values, and over-wide envelopes exactly as validate_table
+/// does. {"ok":true,"values":[i64]} or {"ok":false,"reason":String}.
 #[wasm_bindgen]
 pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> String {
     let parsed = match diceman::parse(expr) {
@@ -116,25 +115,33 @@ pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> 
         return json!({ "ok": true, "values": fatescroll_core::dice::digit_dice_values(sides, count) })
             .to_string();
     }
-    let (lo, hi) = if mod_on {
-        match fatescroll_core::dice::dice_range(expr) {
-            Ok((dmin, dmax)) => (dmin as i64 + mod_min as i64, dmax as i64 + mod_max as i64),
-            Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
+    let modifier = mod_on.then_some(ModifierRange {
+        min: mod_min,
+        max: mod_max,
+    });
+    match outcome_envelope(expr, modifier) {
+        Ok((lo, hi)) => {
+            json!({ "ok": true, "values": (lo..=hi).collect::<Vec<i32>>() }).to_string()
         }
-    } else {
-        match diceman::simulate_seeded(expr, 100_000, 42) {
-            Ok(sim) if sim.min < 0 || sim.max < 0 => {
-                return json!({ "ok": false, "reason": "dice range includes negative values" })
-                    .to_string();
-            }
-            Ok(sim) => (sim.min, sim.max),
-            Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
-        }
-    };
-    if lo > hi || hi - lo > 100_000 {
-        return json!({ "ok": false, "reason": "envelope reversed or too wide" }).to_string();
+        Err(e) => json!({ "ok": false, "reason": envelope_reason(e) }).to_string(),
     }
-    json!({ "ok": true, "values": (lo..=hi).collect::<Vec<i64>>() }).to_string()
+}
+
+/// Human-readable reason for an envelope failure, carrying the numbers the
+/// editor needs to explain the rejection.
+fn envelope_reason(err: EnvelopeError) -> String {
+    match err {
+        EnvelopeError::ModifierReversed { min, max } => {
+            format!("modifier_range reversed: [{min}, {max}]")
+        }
+        EnvelopeError::Dice(e) => e.to_string(),
+        EnvelopeError::NegativeValues { min, max } => {
+            format!("dice range [{min}, {max}] includes negative values")
+        }
+        EnvelopeError::TooWide { width, max } => {
+            format!("envelope too wide: {width} > {max}")
+        }
+    }
 }
 
 /// Probability distribution for the editor's probability pills, from the same
@@ -157,7 +164,9 @@ pub fn histogram(expr: &str) -> String {
 }
 
 /// Roll a table (by FQID) against the in-memory collection. Returns the
-/// serialized RollResult tree, or {"error": String}.
+/// serialized RollResult tree, or {"error": String}. Tables dropped for
+/// validation errors roll as not-found, so callers should surface
+/// validate_collection results before rolling.
 #[wasm_bindgen]
 pub fn roll_collection(manifest_yaml: &str, files_json: &str, fqid: &str, seed: u64) -> String {
     let (manifest, files) = match parse_inputs(manifest_yaml, files_json) {
@@ -275,6 +284,42 @@ mod tests {
         let err: serde_json::Value =
             serde_json::from_str(&expected_values("4d6kh3", true, 0, 1)).unwrap();
         assert_eq!(err["ok"].as_bool(), Some(false));
+    }
+
+    #[test]
+    fn expected_values_rejects_reversed_modifier_range() {
+        // validate_table rejects mod_min > mod_max (ModifierRangeReversed),
+        // so autofill must refuse too — even when the reversal is smaller
+        // than the dice span.
+        let err: serde_json::Value =
+            serde_json::from_str(&expected_values("1d8", true, 5, 0)).unwrap();
+        assert_eq!(err["ok"].as_bool(), Some(false));
+        assert!(err["reason"].as_str().unwrap().contains('5'));
+    }
+
+    #[test]
+    fn validate_collection_malformed_inputs_report_one_error() {
+        // Pins the {"errors":[...]} shape the TS client branches on.
+        let bad_manifest: serde_json::Value =
+            serde_json::from_str(&validate_collection(": not [ yaml", &files_json())).unwrap();
+        let errs = bad_manifest["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().starts_with("manifest:"));
+
+        let bad_files: serde_json::Value =
+            serde_json::from_str(&validate_collection(MANIFEST, "{ not json")).unwrap();
+        let errs = bad_files["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().starts_with("files:"));
+    }
+
+    #[test]
+    fn dice_info_keep_modifier_falls_back_to_simulation() {
+        let kh: serde_json::Value = serde_json::from_str(&dice_info("4d6kh3")).unwrap();
+        assert_eq!(kh["ok"].as_bool(), Some(true));
+        assert_eq!(kh["kind"].as_str(), Some("simulated"));
+        assert_eq!(kh["min"].as_i64(), Some(3));
+        assert_eq!(kh["max"].as_i64(), Some(18));
     }
 
     #[test]
