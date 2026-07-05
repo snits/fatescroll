@@ -7,6 +7,7 @@ body { margin: 0; }
   --brand-gold: #e9d9a8;     --brand-gold-dim: #b79a5f;
   --text: #362d1e;           --text-2: #5c4a2c;        --text-muted: #8a744c;
   --text-faint: #a08a5f;     --text-faint-2: #b0996b;
+  --heading: #4a3a1e;        --heading-accent: #7a6033;
   --border: #c8b28a;         --border-card: #cdb88f;   --border-btn: #c0a76c;
   --border-tree-idle: #d2c199;
   --ox: #8b2b2b;             --ox-hover: #a03434;      --ox-border: #7a2323;
