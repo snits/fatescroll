@@ -78,6 +78,46 @@ min_tool_version: ~
     );
   });
 
+  it('escapes backslashes and quotes in the force-quoted version', () => {
+    const m: ManifestState = {
+      name: 'V',
+      version: '1.0\\beta"x',
+      namespace: 'v',
+      author: '',
+      minToolVersion: '',
+    };
+    expect(manifestYaml(m, [])).toBe(
+      `name: V
+version: "1.0\\\\beta\\"x"
+namespace: v
+author: ~
+min_tool_version: ~
+`,
+    );
+  });
+
+  it('quotes a structurally hostile namespace so the file still parses', () => {
+    const m: ManifestState = {
+      name: 'Hostile',
+      version: '1.0',
+      namespace: 'bad: ns',
+      author: '',
+      minToolVersion: '',
+    };
+    const dirs: Dir[] = [{ id: 'd1', path: 'core', namespace: 'also: bad' }];
+    expect(manifestYaml(m, dirs)).toBe(
+      `name: Hostile
+version: "1.0"
+namespace: "bad: ns"
+author: ~
+min_tool_version: ~
+directories:
+  - path: core
+    namespace: "also: bad"
+`,
+    );
+  });
+
   it('quotes version always, even when it looks like a plain number', () => {
     const m: ManifestState = {
       name: 'V',
@@ -91,7 +131,7 @@ min_tool_version: ~
 version: "1"
 namespace: v
 author: ~
-min_tool_version: "3.2.1"
+min_tool_version: 3.2.1
 `,
     );
   });
@@ -182,6 +222,45 @@ results:
     );
   });
 
+  it('emits an empty roll as a quoted empty scalar', () => {
+    const t = mkTable({ stem: 'unrolled', name: 'Unrolled', roll: '', results: [mkResult()] });
+    expect(tableYaml(t)).toBe(
+      `id: unrolled
+name: Unrolled
+type: simple
+roll: ""
+results:
+  - min: 1
+    max: 1
+`,
+    );
+  });
+
+  it('quotes a leading-dash stem so the id scalar still parses', () => {
+    const t = mkTable({ stem: '-bad', name: 'Bad Stem', results: [mkResult()] });
+    expect(tableYaml(t)).toBe(
+      `id: "-bad"
+name: Bad Stem
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 1
+`,
+    );
+  });
+
+  it('omits the results header entirely when there are no results', () => {
+    const t = mkTable({ stem: 'empty', name: 'Empty', results: [] });
+    expect(tableYaml(t)).toBe(
+      `id: empty
+name: Empty
+type: simple
+roll: 1d6
+`,
+    );
+  });
+
   it('omits text and chain when the result has neither', () => {
     const t = mkTable({ stem: 'bare', name: 'Bare', results: [mkResult({ min: '1', max: '6', text: '' })] });
     expect(tableYaml(t)).toBe(
@@ -222,6 +301,16 @@ tables:
 `,
     );
   });
+
+  it('omits the tables header entirely when there are no refs', () => {
+    const t = mkTable({ stem: 'hollow', name: 'Hollow', type: 'compound', tableRefs: [] });
+    expect(tableYaml(t)).toBe(
+      `id: hollow
+name: Hollow
+type: compound
+`,
+    );
+  });
 });
 
 describe('yv', () => {
@@ -236,7 +325,22 @@ describe('yv', () => {
     ['a\rb', '"a\\rb"'],
     ['{d6} braces', '"{d6} braces"'],
     ['.inf', '".inf"'],
+    ['.5', '".5"'],
+    ['007', '"007"'],
+    ['1e5', '"1e5"'],
+    ['0x1f', '"0x1f"'],
+    ['1.', '"1."'],
+    ['1d6', '1d6'],
+    ['2d6x10', '2d6x10'],
+    ['12abc', '12abc'],
     ['Bandits', 'Bandits'],
+    [' leading space', '" leading space"'],
+    ['trailing space ', '"trailing space "'],
+    ['-leading dash', '"-leading dash"'],
+    ['#leading hash', '"#leading hash"'],
+    ['~', '"~"'],
+    ['True', '"True"'],
+    ['say "hi" now', 'say "hi" now'],
   ];
 
   for (const [input, expected] of cases) {
@@ -256,6 +360,10 @@ describe('yv', () => {
       '"has \\"quotes\\" and \\\\ backslash: yes"',
     );
   });
+
+  it('escapes control chars beyond newline/tab/CR as \\u00XX', () => {
+    expect(yv('a\x0bb')).toBe('"a\\u000bb"');
+  });
 });
 
 describe('numOr0', () => {
@@ -269,6 +377,14 @@ describe('numOr0', () => {
 
   it('returns 0 for a lone dash', () => {
     expect(numOr0('-')).toBe(0);
+  });
+
+  it('truncates a decimal string like parseInt does', () => {
+    expect(numOr0('3.7')).toBe(3);
+  });
+
+  it('keeps the leading integer of a trailing-garbage string', () => {
+    expect(numOr0('12abc')).toBe(12);
   });
 });
 
