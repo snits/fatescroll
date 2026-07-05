@@ -9,7 +9,7 @@ body { margin: 0; }
   --text-faint: #a08a5f;     --text-faint-2: #b0996b;
   --heading: #4a3a1e;        --heading-accent: #7a6033;
   --border: #c8b28a;         --border-card: #cdb88f;   --border-btn: #c0a76c;
-  --border-tree-idle: #d2c199;
+  --border-tree-idle: #d2c199; --border-dashed: #b39a68;
   --ox: #8b2b2b;             --ox-hover: #a03434;      --ox-border: #7a2323;
   --ox-text: #5c1f1f;        --ox-active-bg: #e0d3b0;  --ox-on: #f4e3c8;
   --gold: #9c7a2f;           --gold-hover: #b18a37;    --gold-border: #c79a3d;

@@ -176,16 +176,17 @@ export function tablesInDir(state: Pick<ForgeState, 'tables'>, dirId: string): T
   return state.tables.filter((t) => t.dirId === dirId);
 }
 
-// Mirrors the registry's relative-first resolution: a ref resolves if
-// `{fromNamespace}.{ref}` or the bare `{ref}` matches some table's FQID.
+// Mirrors the registry's three-step resolution (fatescroll-core registry.rs):
+// 1. relative `{fromNamespace}.{ref}`, 2. `{ref}` as an absolute FQID,
+// 3. globally unique bare-id suffix match on `.{ref}`.
 export function refResolves(
   state: Pick<ForgeState, 'dirs' | 'tables'>,
   fromNamespace: string,
   ref: string,
 ): boolean {
+  const fqids = state.tables.map((t) => fqidOf(state, t));
   const rel = `${fromNamespace}.${ref}`;
-  return state.tables.some((t) => {
-    const fq = fqidOf(state, t);
-    return fq === rel || fq === ref;
-  });
+  if (fqids.some((fq) => fq === rel || fq === ref)) return true;
+  const suffix = `.${ref}`;
+  return fqids.filter((fq) => fq.endsWith(suffix)).length === 1;
 }

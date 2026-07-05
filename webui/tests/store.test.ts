@@ -2,7 +2,7 @@
 // ABOUTME: fallback, roll-preview invalidation, and the fqidOf/tablesInDir selectors.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fqidOf, initialState, tablesInDir, useForgeStore } from '../src/model/store';
+import { fqidOf, initialState, refResolves, tablesInDir, useForgeStore } from '../src/model/store';
 
 beforeEach(() => {
   useForgeStore.setState(initialState());
@@ -358,6 +358,67 @@ describe('fqidOf', () => {
     const table = state.tables[0];
 
     expect(fqidOf(state, table)).toBe('wild.new-table');
+  });
+});
+
+describe('refResolves', () => {
+  function stateWith(tables: { dirId: string; ns: string; stem: string }[]) {
+    const dirs = [...new Map(tables.map((t) => [t.dirId, t.ns])).entries()].map(([id, namespace]) => ({
+      id,
+      path: id,
+      namespace,
+    }));
+    return {
+      dirs,
+      tables: tables.map((t, i) => ({
+        uid: `t${i}`,
+        dirId: t.dirId,
+        stem: t.stem,
+        name: t.stem,
+        type: 'simple' as const,
+        tags: [],
+        roll: '1d6',
+        modOn: false,
+        modMin: '',
+        modMax: '',
+        notes: [],
+        results: [],
+        tableRefs: [],
+      })),
+    };
+  }
+
+  it('resolves a relative ref in the caller namespace', () => {
+    const state = stateWith([{ dirId: 'd1', ns: 'wild', stem: 'oracle' }]);
+    expect(refResolves(state, 'wild', 'oracle')).toBe(true);
+  });
+
+  it('resolves an absolute FQID ref from another namespace', () => {
+    const state = stateWith([{ dirId: 'd1', ns: 'wild', stem: 'oracle' }]);
+    expect(refResolves(state, 'town', 'wild.oracle')).toBe(true);
+  });
+
+  it('resolves a bare id via unique suffix fallback across namespaces', () => {
+    const state = stateWith([
+      { dirId: 'd1', ns: 'wild', stem: 'oracle' },
+      { dirId: 'd2', ns: 'town', stem: 'rumors' },
+    ]);
+    // 'oracle' from namespace 'town': not town.oracle, not literal 'oracle',
+    // but exactly one fqid ends with '.oracle' -> resolves.
+    expect(refResolves(state, 'town', 'oracle')).toBe(true);
+  });
+
+  it('does not resolve an ambiguous suffix (same stem in two namespaces)', () => {
+    const state = stateWith([
+      { dirId: 'd1', ns: 'wild', stem: 'oracle' },
+      { dirId: 'd2', ns: 'dungeon', stem: 'oracle' },
+    ]);
+    expect(refResolves(state, 'town', 'oracle')).toBe(false);
+  });
+
+  it('does not resolve an unknown ref', () => {
+    const state = stateWith([{ dirId: 'd1', ns: 'wild', stem: 'oracle' }]);
+    expect(refResolves(state, 'wild', 'missing')).toBe(false);
   });
 });
 

@@ -1,7 +1,7 @@
 // ABOUTME: One chain entry on a result card: a table reference plus an optional
 // ABOUTME: structured reroll set, toggled by the ↺ button.
 
-import { cx } from './Field';
+import { cx, DraftText } from './Field';
 import type { ChainDraft } from '../model/types';
 
 function parseReroll(value: string): number[] {
@@ -34,11 +34,11 @@ export function ChainRow({
       {chain.struct && (
         <div className="chain-row-reroll">
           <span className="chain-row-reroll-label">reroll</span>
-          <input
+          <DraftText
             className="field-input field-input--mono chain-row-reroll-input"
             placeholder="1, 2"
-            value={chain.reroll.join(', ')}
-            onChange={(e) => onPatch({ reroll: parseReroll(e.target.value) })}
+            initial={chain.reroll.join(', ')}
+            onCommit={(raw) => onPatch({ reroll: parseReroll(raw) })}
           />
         </div>
       )}

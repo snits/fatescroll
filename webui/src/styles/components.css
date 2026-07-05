@@ -289,7 +289,7 @@
   width: 100%;
   margin-top: 14px;
   padding: 8px;
-  border: 1px dashed #b39a68;
+  border: 1px dashed var(--border-dashed);
   border-radius: 3px;
   background: transparent;
   color: var(--text-muted);
@@ -748,7 +748,7 @@
 .result-card-add-chain {
   cursor: pointer;
   padding: 3px 10px;
-  border: 1px dashed #b39a68;
+  border: 1px dashed var(--border-dashed);
   border-radius: 3px;
   background: transparent;
   color: var(--text-muted);
