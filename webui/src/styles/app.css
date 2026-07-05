@@ -14,9 +14,14 @@ body {
 }
 
 .app-header {
-  flex: 0 0 56px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 22px;
   background: var(--header-bg);
   color: var(--header-fg);
+  border-bottom: 3px double var(--gold);
 }
 
 .app-body {
@@ -28,6 +33,9 @@ body {
 
 .pane-left {
   flex: 0 0 264px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
 }
