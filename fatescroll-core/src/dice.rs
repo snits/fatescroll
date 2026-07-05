@@ -8,7 +8,7 @@ use diceman::{Expr, Op, ScoringMode};
 ///
 /// Digit dice lower to a `Roll` whose scoring concatenates the faces as
 /// decimal digits; the side count comes from the pool's die kind.
-pub(crate) fn digit_dice_params(expr: &Expr) -> Option<(u32, u32)> {
+pub fn digit_dice_params(expr: &Expr) -> Option<(u32, u32)> {
     match expr {
         Expr::Roll(roll) if matches!(roll.scoring, ScoringMode::DigitConcatenate) => {
             Some((roll.pool.kind.count(), roll.pool.count))

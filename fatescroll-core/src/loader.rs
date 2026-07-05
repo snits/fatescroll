@@ -1,19 +1,23 @@
-// ABOUTME: Loads table collections from the filesystem into a registry.
+// ABOUTME: Builds table registries from collections, on disk or in memory.
 // ABOUTME: Reads manifests, discovers YAML files, parses, validates, and registers.
 
 use std::path::Path;
 
 use crate::error::{Error, LoadError, ValidationError};
-use crate::models::Table;
+use crate::models::{Manifest, Table};
 use crate::registry::Registry;
 use crate::validator::{validate_namespace, validate_table};
 
-/// Load a collection from a manifest file path.
-/// Returns a populated Registry or collected errors.
-pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
-    let (manifest, files, mut errors) =
-        crate::collection::discover_collection_files(manifest_path)?;
-
+/// Build a registry from a manifest and pre-read collection files.
+/// Filesystem-free core of [`load_collection`] for consumers that already
+/// hold file contents in memory.
+/// Returns the registry plus all per-file errors (bad namespace, YAML parse,
+/// id/filename mismatch, table validation, duplicate registration).
+pub fn build_registry(
+    manifest: &Manifest,
+    files: &[crate::collection::CollectionFile],
+) -> (Registry, Vec<Error>) {
+    let mut errors = Vec::new();
     let mut registry = Registry::new();
 
     // Validate manifest namespace
@@ -25,7 +29,7 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
     let mut namespace_valid: std::collections::HashMap<String, bool> =
         std::collections::HashMap::new();
 
-    for file in &files {
+    for file in files {
         let is_valid = match namespace_valid.get(&file.namespace) {
             Some(&valid) => valid,
             None => {
@@ -76,6 +80,18 @@ pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
         }
     }
 
+    (registry, errors)
+}
+
+/// Load a collection from a manifest file path.
+/// Returns a populated Registry or collected errors.
+pub fn load_collection(manifest_path: &Path) -> Result<Registry, Error> {
+    let (manifest, files, mut errors) =
+        crate::collection::discover_collection_files(manifest_path)?;
+
+    let (registry, mut reg_errors) = build_registry(&manifest, &files);
+    errors.append(&mut reg_errors);
+
     if errors.is_empty() {
         Ok(registry)
     } else {
@@ -114,8 +130,40 @@ pub fn load_table(path: &Path) -> Result<Table, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Manifest;
     use crate::test_utils::fixtures_path;
     use std::path::PathBuf;
+
+    #[test]
+    fn build_registry_from_in_memory_files() {
+        let manifest: Manifest = serde_yaml::from_str(
+            "name: Mem\nversion: \"1.0\"\nnamespace: mem\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: core\n    namespace: mem.core\n",
+        )
+        .unwrap();
+        let files = vec![crate::collection::CollectionFile {
+            path: std::path::PathBuf::from("core/oracle.yaml"),
+            namespace: "mem.core".into(),
+            stem: "oracle".into(),
+            contents: "id: oracle\nname: Oracle\ntype: simple\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: X\n".into(),
+        }];
+        let (registry, errors) = build_registry(&manifest, &files);
+        assert!(errors.is_empty(), "unexpected errors: {errors:?}");
+        assert!(registry.get("mem.core.oracle").is_some());
+    }
+
+    #[test]
+    fn build_registry_collects_bad_namespace_error() {
+        let manifest: Manifest = serde_yaml::from_str(
+            "name: Mem\nversion: \"1.0\"\nnamespace: \"BAD NS\"\nauthor: ~\nmin_tool_version: ~\n",
+        )
+        .unwrap();
+        let (_registry, errors) = build_registry(&manifest, &[]);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            errors[0],
+            Error::Validation(ValidationError::InvalidNamespace { .. })
+        ));
+    }
 
     #[test]
     fn load_valid_collection() {
