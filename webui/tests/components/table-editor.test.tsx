@@ -3,7 +3,7 @@
 // ABOUTME: compound body, delete confirmation, and App center-pane wiring.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { AppContent } from '../../src/App';
@@ -117,7 +117,28 @@ describe('TableEditor header', () => {
     expect(useForgeStore.getState().tables[0].stem).toBe('renamed-stem');
   });
 
-  it('typing in Tags splits on commas into the tags array', () => {
+  it('re-initializes the Tags draft when a different table is selected', () => {
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({ uid: 'table-1', tags: ['first'] }),
+        makeTable({ uid: 'table-2', stem: 'other', tags: ['second'] }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+    expect((screen.getByLabelText(/^Tags/) as HTMLInputElement).value).toBe('first');
+
+    act(() => {
+      useForgeStore.getState().selectTable('table-2');
+    });
+
+    expect((screen.getByLabelText(/^Tags/) as HTMLInputElement).value).toBe('second');
+  });
+
+  it('typing in Tags keystroke-by-keystroke commits comma-split tags on blur', async () => {
+    const user = userEvent.setup();
     useForgeStore.setState({
       dirs: [makeDir()],
       tables: [makeTable()],
@@ -126,7 +147,8 @@ describe('TableEditor header', () => {
     });
     renderEditor(makeEngine());
 
-    fireEvent.change(screen.getByLabelText(/^Tags/), { target: { value: 'encounter, wilderness' } });
+    await user.type(screen.getByLabelText(/^Tags/), 'encounter, wilderness');
+    await user.tab();
 
     expect(useForgeStore.getState().tables[0].tags).toEqual(['encounter', 'wilderness']);
   });
@@ -302,6 +324,45 @@ describe('TableEditor auto-fill', () => {
     ]);
   });
 
+  it('ignores a stale modOn on a digit roll: auto-fill stays enabled and fills per-value rows', async () => {
+    const user = userEvent.setup();
+    // modOn was left true from an earlier range roll; the checkbox is forced
+    // off for digit rolls, so auto-fill must query the unmodified values.
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          roll: 'd66',
+          modOn: true,
+          modMin: '1',
+          modMax: '3',
+          results: [{ rid: 'r1', min: '', max: '', text: '', chain: [] }],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    const values: number[] = [];
+    for (let t = 1; t <= 6; t++) for (let u = 1; u <= 6; u++) values.push(t * 10 + u);
+    renderEditor(
+      makeEngine({
+        diceInfo: () => ({ ok: true, kind: 'digit', min: 11, max: 66, outcomes: 36 }),
+        // A modifier on a digit roll is invalid: only the modifier-off query succeeds.
+        expectedValues: (_expr, modOn) => (modOn ? null : values),
+      }),
+    );
+
+    const button = screen.getByRole('button', { name: /Auto-fill ranges/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+
+    await user.click(button);
+
+    const updated = useForgeStore.getState().tables[0].results;
+    expect(updated).toHaveLength(36);
+    expect(updated[0]).toMatchObject({ min: '11', max: '11' });
+    expect(updated[35]).toMatchObject({ min: '66', max: '66' });
+  });
+
   it('disables the auto-fill button when expectedValues is null', () => {
     useForgeStore.setState({
       dirs: [makeDir()],
@@ -468,7 +529,8 @@ describe('TableEditor chains', () => {
     expect(useForgeStore.getState().tables[0].results[0].chain[0].struct).toBe(true);
 
     const rerollInput = screen.getByPlaceholderText('1, 2');
-    fireEvent.change(rerollInput, { target: { value: '1, 2, 3' } });
+    await user.type(rerollInput, '1, 2, 3');
+    await user.tab();
 
     expect(useForgeStore.getState().tables[0].results[0].chain[0].reroll).toEqual([1, 2, 3]);
   });
@@ -507,7 +569,8 @@ describe('TableEditor notes', () => {
     expect((screen.getByLabelText(/^Notes/) as HTMLTextAreaElement).value).toBe('line one\nline two');
   });
 
-  it('splits typed text into notes, preserving interior blank lines', () => {
+  it('splits typed text into notes on blur, preserving interior blank lines', async () => {
+    const user = userEvent.setup();
     useForgeStore.setState({
       dirs: [makeDir()],
       tables: [makeTable({ notes: [] })],
@@ -516,12 +579,14 @@ describe('TableEditor notes', () => {
     });
     renderEditor(makeEngine());
 
-    fireEvent.change(screen.getByLabelText(/^Notes/), { target: { value: 'a\n\nb' } });
+    await user.type(screen.getByLabelText(/^Notes/), 'a{Enter}{Enter}b');
+    await user.tab();
 
     expect(useForgeStore.getState().tables[0].notes).toEqual(['a', '', 'b']);
   });
 
-  it('drops trailing empty lines only', () => {
+  it('drops trailing empty lines only', async () => {
+    const user = userEvent.setup();
     useForgeStore.setState({
       dirs: [makeDir()],
       tables: [makeTable({ notes: [] })],
@@ -530,7 +595,8 @@ describe('TableEditor notes', () => {
     });
     renderEditor(makeEngine());
 
-    fireEvent.change(screen.getByLabelText(/^Notes/), { target: { value: 'a\nb\n\n\n' } });
+    await user.type(screen.getByLabelText(/^Notes/), 'a{Enter}b{Enter}{Enter}{Enter}');
+    await user.tab();
 
     expect(useForgeStore.getState().tables[0].notes).toEqual(['a', 'b']);
   });
@@ -603,6 +669,13 @@ describe('CompoundEditor', () => {
     renderEditor(makeEngine());
 
     expect(screen.getByPlaceholderText('table reference').className).toContain('field-input--invalid');
+  });
+
+  it('does not mark an empty sub-table ref invalid', () => {
+    setUpCompound('');
+    renderEditor(makeEngine());
+
+    expect(screen.getByPlaceholderText('table reference').className).not.toContain('field-input--invalid');
   });
 
   it('"+ table" adds a sub-table ref row', async () => {

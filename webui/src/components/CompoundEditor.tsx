@@ -35,7 +35,7 @@ export function CompoundEditor({
               'field-input',
               'field-input--mono',
               'compound-editor-ref',
-              isUnresolved(ref.ref) && 'field-input--invalid',
+              ref.ref !== '' && isUnresolved(ref.ref) && 'field-input--invalid',
             )}
             placeholder="table reference"
             value={ref.ref}

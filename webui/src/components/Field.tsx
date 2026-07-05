@@ -1,5 +1,8 @@
-// ABOUTME: Shared labeled-input control used across the manifest and table editors.
-// ABOUTME: Also exports `cx`, a tiny class-name joiner used throughout the editor components.
+// ABOUTME: Shared input controls for the editors: Field (labeled input), DraftText
+// ABOUTME: (raw-draft input committed on blur), plus the cx class joiner and
+// ABOUTME: isNumericDraft numeric-keystroke filter.
+
+import { useState } from 'react';
 
 export function cx(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(' ');
@@ -11,6 +14,37 @@ const NUMERIC_DRAFT = /^-?\d*$/;
  * minus, including the transient lone "-" before more digits are typed. */
 export function isNumericDraft(value: string): boolean {
   return NUMERIC_DRAFT.test(value);
+}
+
+/** Text control whose store value is a parsed form of what the user types
+ * (comma-split tags, newline-split notes, csv reroll sets). Holds the raw
+ * draft locally so separators aren't normalized away mid-keystroke, and
+ * commits on blur. Mount it with a `key` tied to the entity it edits (table
+ * uid / chain rid) so the draft re-initializes when the target changes. */
+export function DraftText({
+  multiline,
+  className,
+  placeholder,
+  rows,
+  initial,
+  onCommit,
+}: {
+  multiline?: boolean;
+  className?: string;
+  placeholder?: string;
+  rows?: number;
+  initial: string;
+  onCommit: (raw: string) => void;
+}) {
+  const [draft, setDraft] = useState(initial);
+  const props = {
+    className,
+    placeholder,
+    value: draft,
+    onChange: (e: { target: { value: string } }) => setDraft(e.target.value),
+    onBlur: () => onCommit(draft),
+  };
+  return multiline ? <textarea rows={rows} {...props} /> : <input {...props} />;
 }
 
 export function Field({

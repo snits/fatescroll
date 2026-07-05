@@ -4,7 +4,7 @@
 import { useEngine } from '../engine/useEngine';
 import type { DiceInfo } from '../engine/engine';
 import { CompoundEditor } from './CompoundEditor';
-import { cx, isNumericDraft } from './Field';
+import { cx, DraftText, isNumericDraft } from './Field';
 import { ResultCard } from './ResultCard';
 import { autofillRanges } from '../logic/autofill';
 import { uid } from '../model/ids';
@@ -73,7 +73,7 @@ export function TableEditor() {
       : '';
   const expectedValues =
     current.type === 'simple'
-      ? engine.expectedValues(current.roll, current.modOn, numOr0(current.modMin), numOr0(current.modMax))
+      ? engine.expectedValues(current.roll, modActive, numOr0(current.modMin), numOr0(current.modMax))
       : null;
   const dist = current.type === 'simple' ? engine.histogram(current.roll) : null;
 
@@ -165,13 +165,14 @@ export function TableEditor() {
         <span className="field-label-text">
           Tags <span className="field-label-optional">(comma separated)</span>
         </span>
-        <input
+        <DraftText
+          key={current.uid}
           className="field-input"
           placeholder="encounter, wilderness"
-          value={current.tags.join(', ')}
-          onChange={(e) =>
+          initial={current.tags.join(', ')}
+          onCommit={(raw) =>
             patch({
-              tags: e.target.value
+              tags: raw
                 .split(',')
                 .map((t) => t.trim())
                 .filter(Boolean),
@@ -271,11 +272,13 @@ export function TableEditor() {
             <span className="field-label-text">
               Notes <span className="field-label-optional">(one per line, optional)</span>
             </span>
-            <textarea
+            <DraftText
+              key={current.uid}
+              multiline
               rows={2}
               placeholder="GM guidance, provenance, usage…"
-              value={current.notes.join('\n')}
-              onChange={(e) => patch({ notes: notesFromText(e.target.value) })}
+              initial={current.notes.join('\n')}
+              onCommit={(raw) => patch({ notes: notesFromText(raw) })}
             />
           </label>
         </>
