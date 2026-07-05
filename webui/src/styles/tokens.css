@@ -1,0 +1,33 @@
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+:root {
+  --bg-page: #e3d7bb;        --bg-panel: #efe6cf;      --bg-card: #f6efdc;
+  --bg-input: #fbf6e9;       --bg-btn: #f7f0dc;        --bg-btn-alt: #f2ead6;
+  --header-bg: #3a2f1c;      --header-fg: #eaddb9;
+  --brand-gold: #e9d9a8;     --brand-gold-dim: #b79a5f;
+  --text: #362d1e;           --text-2: #5c4a2c;        --text-muted: #8a744c;
+  --text-faint: #a08a5f;     --text-faint-2: #b0996b;
+  --border: #c8b28a;         --border-card: #cdb88f;   --border-btn: #c0a76c;
+  --border-tree-idle: #d2c199;
+  --ox: #8b2b2b;             --ox-hover: #a03434;      --ox-border: #7a2323;
+  --ox-text: #5c1f1f;        --ox-active-bg: #e0d3b0;  --ox-on: #f4e3c8;
+  --gold: #9c7a2f;           --gold-hover: #b18a37;    --gold-border: #c79a3d;
+  --gold-on: #fbf3d8;
+  --olive: #4f5d38;          --olive-border: #6f7d4f;
+  --olive-bg: #eef0e0;       --olive-pill-bg: #e7ead6; --olive-pill-border: #c3cba3;
+  --err: #a11f1f;            --err-2: #9a3030;         --err-border: #b05a5a;
+  --err-bg: #f0dede;         --warn: #9c6a2f;
+  --cmp-bg: #e2d3ea;         --cmp-fg: #6a4a86;
+  --yaml-bg: #241d12;        --yaml-border: #2f2718;   --yaml-fg: #d9c99a;
+  --chain-border: #c3a86e;
+  --font-display: 'IM Fell English SC', serif;
+  --font-body: 'Spectral', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+::selection { background: #d8c08a; color: #2a2314; }
+* { scrollbar-width: thin; scrollbar-color: #c1a978 transparent; }
+*::-webkit-scrollbar { width: 11px; }
+*::-webkit-scrollbar-thumb {
+  background: #c1a978; border: 3px solid transparent;
+  background-clip: content-box; border-radius: 6px;
+}
