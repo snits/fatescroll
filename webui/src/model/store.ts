@@ -25,10 +25,10 @@ export interface ForgeState extends ForgeData {
   selectTable(uid: string): void;
   setManifest(patch: Partial<ManifestState>): void;
   addDir(): void;
-  updateDir(id: string, patch: Partial<Dir>): void;
+  updateDir(id: string, patch: Partial<Omit<Dir, 'id'>>): void;
   deleteDir(id: string): void;
   addTable(dirId: string): void;
-  updateTable(uid: string, patch: Partial<TableDraft>): void;
+  updateTable(uid: string, patch: Partial<Omit<TableDraft, 'uid'>>): void;
   deleteTable(uid: string): void;
   setRollLines(lines: RollLine[] | null): void;
 }
@@ -86,6 +86,7 @@ export const useForgeStore = create<ForgeState>()((set) => ({
       withClearedRoll({
         dirs: [...state.dirs, { id: uid(), path: '', namespace: state.manifest.namespace }],
         view: 'manifest' as View,
+        selUid: null,
       }),
     ),
 
@@ -141,7 +142,8 @@ export const useForgeStore = create<ForgeState>()((set) => ({
 
   updateTable: (tableUid, patch) =>
     set((state) => {
-      const sanitized = patch.stem !== undefined ? { ...patch, stem: patch.stem.replace(/\s+/g, '-') } : patch;
+      const sanitized =
+        patch.stem !== undefined ? { ...patch, stem: patch.stem.trim().replace(/\s+/g, '-') } : patch;
       return withClearedRoll({
         tables: state.tables.map((t) => (t.uid === tableUid ? { ...t, ...sanitized } : t)),
       });
