@@ -43,6 +43,7 @@ body {
 .pane-center {
   flex: 1;
   overflow-y: auto;
+  padding: 22px 26px;
 }
 
 .pane-right {
