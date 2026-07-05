@@ -301,3 +301,139 @@
 .tree-add-dir:hover {
   background: var(--hover-row);
 }
+
+/* Manifest editor */
+
+.manifest-editor {
+  max-width: 640px;
+}
+
+.manifest-editor-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 1px;
+  color: #4a3a1e;
+  margin-bottom: 4px;
+}
+
+.manifest-editor-subtitle {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 22px;
+}
+
+.manifest-editor-subtitle-mono {
+  font-family: var(--font-mono);
+}
+
+.manifest-editor-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+  margin-bottom: 26px;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field-label--sm {
+  gap: 4px;
+}
+
+.field-label-text {
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.field-label--sm .field-label-text {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.field-label-optional {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-faint-2);
+}
+
+.field-input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.field-input:focus {
+  border-color: var(--ox);
+}
+
+.field-input--mono {
+  font-family: var(--font-mono);
+}
+
+.field-input--invalid {
+  border-color: var(--err-border);
+}
+
+.manifest-editor-dirs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+}
+
+.manifest-editor-dirs-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  color: #7a6033;
+}
+
+.manifest-editor-dirs-add {
+  cursor: pointer;
+  padding: 5px 12px;
+  border: 1px solid var(--border-btn);
+  border-radius: 3px;
+  background: var(--bg-btn);
+  color: #7a6033;
+  font-size: 12px;
+}
+
+.manifest-editor-dirs-add:hover {
+  background: var(--hover-btn);
+}
+
+.manifest-editor-dir-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.manifest-editor-dir-delete {
+  cursor: pointer;
+  height: 34px;
+  width: 34px;
+  border: 1px solid var(--border-card);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--err-2);
+  font-size: 15px;
+}
+
+.manifest-editor-dir-delete:hover {
+  background: var(--err-bg);
+  border-color: #b06a6a;
+}
