@@ -713,7 +713,12 @@ export function yv(s: string): string {
     /[\n\r\t]/.test(s) ||
     KEYWORDS.has(s.toLowerCase()) ||
     /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(s) ||
-    /^[+-]?(\d|\.\d|\.inf|\.nan)/i.test(s);   // \.\d catches fraction-only floats like .5
+    // Full-string numeric lookalikes only: YAML resolves a scalar to a number
+    // only when the WHOLE scalar parses as one, so `1d6` stays plain while
+    // `12`, `007`, `.5`, `1e5`, `0x1f` get quoted.
+    /^[+-]?(\d[\d_]*(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(s) ||
+    /^[+-]?\.(inf|nan)$/i.test(s) ||
+    /^[+-]?0[xob][0-9a-fA-F_]+$/i.test(s);
   if (!needsQuote) return s;
   return `"${dq(s)}"`;
 }
