@@ -47,7 +47,7 @@ The product of this tool is YAML. Judge the YAML.
 ## Dimension 2 — Engine parity (weight ×4, max 20)
 
 **Checks:**
-1. Validation messages in the right pane are byte-identical to core `ValidationError` Display strings (compare panel text vs `fatescroll validate` stderr for the same broken collection).
+1. Validation messages in the right pane are byte-identical to core `ValidationError` Display strings (compare panel text vs `fatescroll validate` output for the same broken collection — use a collection with a SINGLE error: on multi-error collections the webui intentionally reports a superset, because the CLI stops before cross-reference checks when any load error exists; do not flag that superset as a defect).
 2. Dice hint honesty: `2d6` → range 2–12 · 11 outcomes; `D66` → digit kind, 36 outcomes, 11–66; garbage → unparseable with core's reason. `D66` + modifier_range: checkbox disabled (delta #3).
 3. Roller parity: chain depth limit and reroll behavior come from core (verify the roll path calls the WASM `roll_collection`, and a self-chaining table terminates with core's depth error rather than hanging).
 4. Probability pills: for `1d6` per-value rows expect ~16–17% each; for a `2d6` `[6,8]` range expect ~44%. Sampled values within ±1.5 points are fine.
