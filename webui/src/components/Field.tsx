@@ -2,7 +2,7 @@
 // ABOUTME: (raw-draft input committed on blur), plus the cx class joiner and
 // ABOUTME: isNumericDraft numeric-keystroke filter.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 export function cx(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(' ');
@@ -19,8 +19,15 @@ export function isNumericDraft(value: string): boolean {
 /** Text control whose store value is a parsed form of what the user types
  * (comma-split tags, newline-split notes, csv reroll sets). Holds the raw
  * draft locally so separators aren't normalized away mid-keystroke, and
- * commits on blur. Mount it with a `key` tied to the entity it edits (table
- * uid / chain rid) so the draft re-initializes when the target changes. */
+ * commits on blur — skipped when the draft is unchanged, so merely tabbing
+ * through doesn't trigger store side effects (e.g. clearing the roll
+ * preview). Mount it with a `key` tied to the entity it edits (table uid /
+ * chain rid) so the draft re-initializes when the target changes.
+ *
+ * Invariant: while a DraftText is mounted, no other code path may write its
+ * backing store field (tags/notes/reroll) — the draft would go stale and
+ * clobber the external write on the next commit. External writers must
+ * change the mount `key` so the draft re-initializes. */
 export function DraftText({
   multiline,
   className,
@@ -37,12 +44,17 @@ export function DraftText({
   onCommit: (raw: string) => void;
 }) {
   const [draft, setDraft] = useState(initial);
+  const committed = useRef(initial);
   const props = {
     className,
     placeholder,
     value: draft,
     onChange: (e: { target: { value: string } }) => setDraft(e.target.value),
-    onBlur: () => onCommit(draft),
+    onBlur: () => {
+      if (draft === committed.current) return;
+      committed.current = draft;
+      onCommit(draft);
+    },
   };
   return multiline ? <textarea rows={rows} {...props} /> : <input {...props} />;
 }

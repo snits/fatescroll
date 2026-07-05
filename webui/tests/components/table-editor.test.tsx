@@ -152,6 +152,30 @@ describe('TableEditor header', () => {
 
     expect(useForgeStore.getState().tables[0].tags).toEqual(['encounter', 'wilderness']);
   });
+
+  it('tabbing through Tags without typing does not commit (roll preview survives)', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [makeTable({ tags: ['encounter'] })],
+      selUid: 'table-1',
+      view: 'table',
+      rollLines: [{ indent: 0, text: 'a preview' }],
+    });
+    renderEditor(makeEngine());
+
+    await user.click(screen.getByLabelText(/^Tags/));
+    await user.tab();
+
+    expect(useForgeStore.getState().rollLines).toEqual([{ indent: 0, text: 'a preview' }]);
+
+    await user.click(screen.getByLabelText(/^Tags/));
+    await user.type(screen.getByLabelText(/^Tags/), ', wilderness');
+    await user.tab();
+
+    expect(useForgeStore.getState().rollLines).toBeNull();
+    expect(useForgeStore.getState().tables[0].tags).toEqual(['encounter', 'wilderness']);
+  });
 });
 
 describe('TableEditor type toggle', () => {
