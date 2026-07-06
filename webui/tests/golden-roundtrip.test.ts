@@ -2,7 +2,7 @@
 // ABOUTME: Golden round-trip proof: editor state -> emitted YAML -> files on
 // ABOUTME: disk -> the real fatescroll binary validates and rolls them.
 
-import { describe, test, expect, beforeAll } from 'vitest';
+import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import { execa } from 'execa';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -17,6 +17,11 @@ const bin = `${repoRoot}/target/debug/fatescroll`;
 beforeAll(async () => {
   await execa('cargo', ['build', '-p', 'fatescroll-cli'], { cwd: repoRoot });
 }, 300_000);
+
+const tmpDirs: string[] = [];
+afterAll(() => {
+  for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 function mkResult(overrides: Partial<ResultDraft> = {}): ResultDraft {
   return { rid: 'r', min: '1', max: '1', text: '', chain: [], ...overrides };
@@ -141,6 +146,7 @@ describe('golden round-trip through the real fatescroll CLI', () => {
       const tables = [omen, stormMood, encounterGenerator];
 
       const tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fatescroll-golden-'));
+      tmpDirs.push(tmp);
       const manifestPath = writeCollection(tmp, manifest, dirs, tables);
 
       const validate = await execa(bin, ['validate', '--collection', manifestPath], { reject: false });
@@ -190,10 +196,11 @@ describe('golden round-trip through the real fatescroll CLI', () => {
       });
 
       const tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fatescroll-gap-'));
+      tmpDirs.push(tmp);
       const manifestPath = writeCollection(tmp, manifest, dirs, [gappy]);
 
       const validate = await execa(bin, ['validate', '--collection', manifestPath], { reject: false });
-      expect(validate.exitCode).not.toBe(0);
+      expect(validate.exitCode, validate.stderr + validate.stdout).not.toBe(0);
       expect(validate.stderr + validate.stdout).toMatch(/gap|missing values/i);
     },
     120_000,
