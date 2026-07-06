@@ -45,6 +45,18 @@ npm run build        # build:wasm, then tsc -b, then vite build
 npm run lint          # oxlint
 ```
 
+## Opening collections
+
+Open (in the header bar) accepts either a collection zip (the format produced
+by Export) or a folder picked via the browser's directory picker. Opening
+runs the same parsing and discovery as the CLI — `fatescroll-core`, through
+the wasm `parse_collection` function — but semantic validation happens live
+in the editor after load, so a collection the CLI would reject for range
+gaps or bad dice expressions can still be opened and fixed in place. Opening
+is all-or-nothing: any parse failure surfaces the full list of errors, and
+YAML files not reachable from the manifest's `directories:` entries are
+reported as warnings.
+
 ## Architecture
 
 ```
@@ -58,7 +70,8 @@ store (Zustand)  ->  YAML emitter  ->  fatescroll-wasm engine  ->  right pane
   must parse byte-reliably in the real Rust CLI's `serde_yaml` loader.
 - **`fatescroll-wasm`** (`../fatescroll-wasm`) — wraps `fatescroll-core` with
   `wasm-bindgen`, exposing JSON-string functions: `validate_collection`,
-  `dice_info`, `expected_values`, `histogram`, `roll_collection`. Built by
+  `parse_collection`, `dice_info`, `expected_values`, `histogram`,
+  `roll_collection`. Built by
   `npm run build:wasm` into `src/wasm/pkg/` (gitignored, regenerated on every
   `dev`/`build`).
 - **`src/engine/engine.ts`** — wraps the raw wasm module: parses its JSON

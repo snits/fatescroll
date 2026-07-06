@@ -35,7 +35,7 @@ See `webui/README.md` for the full command list, prerequisites, and architecture
 fatescroll is a Cargo workspace with three crates:
 - **`fatescroll-core`** — Library crate with all domain logic (no CLI dependencies). External consumers (e.g., hexwalker) depend on this.
 - **`fatescroll-cli`** — Binary crate providing the `fatescroll` CLI, depends on `fatescroll-core`.
-- **`fatescroll-wasm`** — `wasm-bindgen` crate wrapping `fatescroll-core` for the browser; exposes JSON-string functions (`validate_collection`, `dice_info`, `expected_values`, `histogram`, `roll_collection`) consumed by `webui/`.
+- **`fatescroll-wasm`** — `wasm-bindgen` crate wrapping `fatescroll-core` for the browser; exposes JSON-string functions (`validate_collection`, `parse_collection`, `dice_info`, `expected_values`, `histogram`, `roll_collection`) consumed by `webui/`.
 
 `webui/` is a React/TypeScript/Vite app ("Table Forge") for authoring fatescroll YAML collections in the browser. It runs the same `fatescroll-core` logic as the CLI via `fatescroll-wasm`, so validation and rolling share one source of truth between the browser and the CLI.
 
@@ -81,7 +81,7 @@ Top-level `Error` enum wraps `ValidationError`, `LoadError`, `RollError`, `serde
 
 - **Unit tests**: inline `#[cfg(test)] mod tests` in each `fatescroll-core` source file, using `fixtures_path()` helper that resolves to `tests/fixtures/` at the workspace root.
 - **Integration tests**: `fatescroll-cli/tests/cli_integration.rs` runs the compiled binary via `Command::new(env!("CARGO_BIN_EXE_fatescroll"))`. Uses `fixtures_path()` for fixture collections and `tempfile::TempDir` for write tests.
-- **Fixtures**: `tests/fixtures/valid-collection/` is the primary fixture with 11 tables. Other fixtures test specific scenarios (invalid, id-mismatch, file-entries, files-only). Fixtures live at the workspace root and are shared by both crates.
+- **Fixtures**: `tests/fixtures/valid-collection/` is the primary fixture with 12 tables. Other fixtures test specific scenarios (invalid, id-mismatch, file-entries, files-only). Fixtures live at the workspace root and are shared by both crates.
 
 ## Conventions
 
