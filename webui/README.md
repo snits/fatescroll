@@ -30,6 +30,10 @@ npm test             # vitest: unit, component, and golden round-trip tests
 npm run test:watch   # vitest in watch mode
 ```
 
+On a fresh checkout, run `npm run build:wasm` once first — `npm test` doesn't
+build the wasm package itself, and `src/engine/engine.ts` imports it directly,
+so tests that render the real engine loader fail without it.
+
 `tests/golden-roundtrip.test.ts` compiles `fatescroll-cli` in debug mode and
 drives the real binary, so the first test run is slow (workspace build) —
 subsequent runs are incremental.
@@ -53,7 +57,7 @@ store (Zustand)  ->  YAML emitter  ->  fatescroll-wasm engine  ->  right pane
 - **`src/yaml/emit.ts`** — turns store state into fatescroll YAML text. Output
   must parse byte-reliably in the real Rust CLI's `serde_yaml` loader.
 - **`fatescroll-wasm`** (`../fatescroll-wasm`) — wraps `fatescroll-core` with
-  `wasm-bindgen`, exposing five JSON-string functions: `validate_collection`,
+  `wasm-bindgen`, exposing JSON-string functions: `validate_collection`,
   `dice_info`, `expected_values`, `histogram`, `roll_collection`. Built by
   `npm run build:wasm` into `src/wasm/pkg/` (gitignored, regenerated on every
   `dev`/`build`).
