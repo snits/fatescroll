@@ -15,15 +15,22 @@ import { initialState, useForgeStore } from '../src/model/store';
 // useForgeStore across tests.
 afterEach(cleanup);
 
+function makeRawEngine(): RawEngine {
+  return {
+    validate_collection: () => '',
+    dice_info: () => '',
+    expected_values: () => '',
+    histogram: () => '',
+    roll_collection: () => '',
+    parse_collection: () => '',
+  };
+}
+
 describe('wrapEngine', () => {
   it('validate parses errors out of the JSON envelope', () => {
     const raw = {
+      ...makeRawEngine(),
       validate_collection: (_m: string, _f: string) => JSON.stringify({ errors: ['boom'] }),
-      dice_info: () => '',
-      expected_values: () => '',
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.validate('manifest', [])).toEqual(['boom']);
@@ -31,12 +38,8 @@ describe('wrapEngine', () => {
 
   it('diceInfo parses the ok envelope', () => {
     const raw = {
-      validate_collection: () => '',
+      ...makeRawEngine(),
       dice_info: () => JSON.stringify({ ok: true, kind: 'range', min: 1, max: 6, outcomes: 6 }),
-      expected_values: () => '',
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.diceInfo('1d6')).toEqual({
@@ -51,15 +54,11 @@ describe('wrapEngine', () => {
   it('diceInfo memoizes by expr: identical calls hit the raw engine once', () => {
     let calls = 0;
     const raw = {
-      validate_collection: () => '',
+      ...makeRawEngine(),
       dice_info: () => {
         calls++;
         return JSON.stringify({ ok: true, kind: 'range', min: 1, max: 6, outcomes: 6 });
       },
-      expected_values: () => '',
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     engine.diceInfo('1d6');
@@ -70,15 +69,11 @@ describe('wrapEngine', () => {
   it('diceInfo does not conflate different exprs in the cache', () => {
     let calls = 0;
     const raw = {
-      validate_collection: () => '',
+      ...makeRawEngine(),
       dice_info: (expr: string) => {
         calls++;
         return JSON.stringify({ ok: true, kind: 'digit', min: 1, max: expr === '1d6' ? 6 : 8, outcomes: 1 });
       },
-      expected_values: () => '',
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.diceInfo('1d6').max).toBe(6);
@@ -89,15 +84,11 @@ describe('wrapEngine', () => {
   it('expectedValues returns values on ok, memoized by expr+modifier tuple', () => {
     let calls = 0;
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
+      ...makeRawEngine(),
       expected_values: () => {
         calls++;
         return JSON.stringify({ ok: true, values: [1, 2, 3] });
       },
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.expectedValues('1d6', false, 0, 0)).toEqual([1, 2, 3]);
@@ -110,12 +101,8 @@ describe('wrapEngine', () => {
 
   it('expectedValues returns null when the engine reports not-ok', () => {
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
+      ...makeRawEngine(),
       expected_values: () => JSON.stringify({ ok: false, reason: 'bad expr' }),
-      histogram: () => '',
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.expectedValues('bogus', false, 0, 0)).toBeNull();
@@ -124,16 +111,12 @@ describe('wrapEngine', () => {
   it('histogram returns outcomes on ok, memoized by expr, null on not-ok', () => {
     let calls = 0;
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
-      expected_values: () => '',
+      ...makeRawEngine(),
       histogram: (expr: string) => {
         calls++;
         if (expr === 'bogus') return JSON.stringify({ ok: false, reason: 'bad' });
         return JSON.stringify({ ok: true, outcomes: [[1, 0.5], [2, 0.5]] });
       },
-      roll_collection: () => '',
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.histogram('1d2')).toEqual([[1, 0.5], [2, 0.5]]);
@@ -147,15 +130,11 @@ describe('wrapEngine', () => {
     let seenSeed: bigint | null = null;
     const tree: RollNode = { table_name: 'oracle', roll: 4, text: 'yes', children: [] };
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
-      expected_values: () => '',
-      histogram: () => '',
+      ...makeRawEngine(),
       roll_collection: (_m: string, _f: string, _fqid: string, seed: bigint) => {
         seenSeed = seed;
         return JSON.stringify(tree);
       },
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     const result = engine.roll('manifest', [], 'ns.oracle');
@@ -165,12 +144,8 @@ describe('wrapEngine', () => {
 
   it('roll surfaces {error} responses from the engine', () => {
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
-      expected_values: () => '',
-      histogram: () => '',
+      ...makeRawEngine(),
       roll_collection: () => JSON.stringify({ error: 'not found' }),
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.roll('manifest', [], 'ns.missing')).toEqual({ error: 'not found' });
@@ -179,15 +154,11 @@ describe('wrapEngine', () => {
   it('roll uses a fresh seed on each call', () => {
     const seeds: bigint[] = [];
     const raw = {
-      validate_collection: () => '',
-      dice_info: () => '',
-      expected_values: () => '',
-      histogram: () => '',
+      ...makeRawEngine(),
       roll_collection: (_m: string, _f: string, _fqid: string, seed: bigint) => {
         seeds.push(seed);
         return JSON.stringify({ table_name: 't', roll: 1, text: null, children: [] });
       },
-      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     engine.roll('manifest', [], 'ns.t');
@@ -231,17 +202,6 @@ describe('wrapEngine', () => {
     });
   });
 });
-
-function makeRawEngine(): RawEngine {
-  return {
-    validate_collection: () => '',
-    dice_info: () => '',
-    expected_values: () => '',
-    histogram: () => '',
-    roll_collection: () => '',
-    parse_collection: () => '',
-  };
-}
 
 function makeFakeEngine(): Engine & { diceInfoCalls: number } {
   const fake = {
