@@ -152,7 +152,7 @@ describe('golden round-trip through the real fatescroll CLI', () => {
         reject: false,
       });
       expect(chained.exitCode, chained.stderr + chained.stdout).toBe(0);
-      expect(chained.stdout).toContain('paces back.');
+      expect(chained.stdout).toMatch(/A shadow follows you, \d+ paces back\./);
       const lines = chained.stdout.trim().split('\n');
       expect(lines.length).toBe(2);
       expect(lines[1].startsWith('  Omen')).toBe(true);
