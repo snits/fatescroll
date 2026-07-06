@@ -19,6 +19,11 @@ export interface RollNode {
   children: RollNode[];
 }
 
+export interface ImportFile {
+  path: string;
+  contents: string;
+}
+
 export interface ParsedChainModified {
   table: string;
   reroll: number[];
@@ -76,7 +81,7 @@ export interface Engine {
   expectedValues(expr: string, modOn: boolean, modMin: number, modMax: number): number[] | null;
   histogram(expr: string): [value: number, probability: number][] | null;
   roll(manifestYaml: string, files: FileInput[], fqid: string): RollNode | { error: string };
-  parseCollection(manifestYaml: string, files: { path: string; contents: string }[]): ParseOutcome;
+  parseCollection(manifestYaml: string, files: ImportFile[]): ParseOutcome;
 }
 
 /** The raw fatescroll-wasm module surface: string-in/string-out JSON envelopes. */
