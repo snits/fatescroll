@@ -422,6 +422,51 @@ describe('refResolves', () => {
   });
 });
 
+describe('loadCollection', () => {
+  it('replaces manifest/dirs/tables and resets selection to the manifest view', () => {
+    const store = useForgeStore;
+    store.getState().addDir();
+    const dirId = store.getState().dirs[0].id;
+    store.getState().addTable(dirId);
+    store.getState().setRollLines([{ indent: 0, text: 'old roll' }]);
+
+    const manifest = {
+      name: 'Kal-Arath',
+      version: '2.0',
+      namespace: 'kal-arath',
+      author: 'Jerry',
+      minToolVersion: '',
+    };
+    const dirs = [{ id: 'nd1', path: 'core', namespace: 'kal-arath.core' }];
+    const tables = [
+      {
+        uid: 'nt1',
+        dirId: 'nd1',
+        stem: 'oracle',
+        name: 'Oracle',
+        type: 'simple' as const,
+        tags: [],
+        roll: '1d6',
+        modOn: false,
+        modMin: '',
+        modMax: '',
+        notes: [],
+        results: [],
+        tableRefs: [],
+      },
+    ];
+    store.getState().loadCollection({ manifest, dirs, tables });
+
+    const s = store.getState();
+    expect(s.manifest).toEqual(manifest);
+    expect(s.dirs).toEqual(dirs);
+    expect(s.tables).toEqual(tables);
+    expect(s.view).toBe('manifest');
+    expect(s.selUid).toBeNull();
+    expect(s.rollLines).toBeNull();
+  });
+});
+
 describe('tablesInDir', () => {
   it('returns only the tables belonging to the given dir', () => {
     useForgeStore.getState().addDir();

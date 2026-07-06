@@ -2,7 +2,7 @@
 // ABOUTME: to the Table Forge webui. All I/O is JSON strings; RNG seeds come from JS.
 
 use fatescroll_core::collection::CollectionFile;
-use fatescroll_core::models::{Manifest, ModifierRange};
+use fatescroll_core::models::{Manifest, ModifierRange, Table};
 use fatescroll_core::validator::{EnvelopeError, outcome_envelope, validate_references};
 use serde::Deserialize;
 use serde_json::json;
@@ -184,6 +184,131 @@ pub fn roll_collection(manifest_yaml: &str, files_json: &str, fqid: &str, seed: 
     }
 }
 
+#[derive(Deserialize)]
+struct RawFile {
+    path: String,
+    contents: String,
+}
+
+/// `"core/"` and `"."` normalize to `"core"` / `""` so zip paths compare
+/// against manifest directory entries verbatim.
+fn normalize_dir(path: &str) -> &str {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed == "." { "" } else { trimmed }
+}
+
+/// `"core/oracle.yaml"` -> `("core", "oracle.yaml")`; `"oracle.yaml"` -> `("", "oracle.yaml")`.
+fn split_parent(path: &str) -> (&str, &str) {
+    path.rsplit_once('/').unwrap_or(("", path))
+}
+
+fn is_yaml_name(name: &str) -> bool {
+    name.ends_with(".yaml") || name.ends_with(".yml")
+}
+
+fn is_manifest_name(name: &str) -> bool {
+    name == "manifest.yaml" || name.ends_with(".manifest.yaml")
+}
+
+/// Parse a whole collection held in memory for import into the editor.
+/// Takes ALL ingested files; discovery mirrors the on-disk loader
+/// (collection.rs): non-recursive per `directories:` entry, `.yaml`/`.yml`
+/// only, manifests skipped. Tables must carry an `id` matching the filename
+/// stem, exactly as `build_registry` enforces. Does NOT run validate_table —
+/// semantically invalid tables load fine and get fixed in the editor.
+/// Duplicate-FQID detection and namespace validation are not mirrored either
+/// (the editor's live validate_collection catches both after load).
+/// Directory paths must be plain relative segments ("core/deep"); "./core"
+/// forms won't match.
+/// Returns {"manifest": .., "tables": [{path, namespace, stem, table}],
+/// "ignored_yaml": [..]} or {"errors": [String]} (all-or-nothing).
+#[wasm_bindgen]
+pub fn parse_collection(manifest_yaml: &str, files_json: &str) -> String {
+    let manifest: Manifest = match serde_yaml::from_str(manifest_yaml) {
+        Ok(m) => m,
+        Err(e) => return json!({ "errors": [format!("manifest: {e}")] }).to_string(),
+    };
+    if !manifest.files.is_empty() {
+        return json!({ "errors": ["manifest: `files:` entries are not supported by Table Forge"] })
+            .to_string();
+    }
+    let raw_files: Vec<RawFile> = match serde_json::from_str(files_json) {
+        Ok(v) => v,
+        Err(e) => return json!({ "errors": [format!("files: {e}")] }).to_string(),
+    };
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut tables: Vec<serde_json::Value> = Vec::new();
+    let mut matched = vec![false; raw_files.len()];
+
+    for dir in &manifest.directories {
+        let dir_path = dir.path.to_string_lossy();
+        let dir_norm = normalize_dir(&dir_path);
+        for (i, f) in raw_files.iter().enumerate() {
+            let (parent, name) = split_parent(&f.path);
+            if parent != dir_norm || !is_yaml_name(name) {
+                continue;
+            }
+            matched[i] = true;
+            if is_manifest_name(name) {
+                continue;
+            }
+            let stem = name.rsplit_once('.').map_or(name, |(s, _)| s);
+            match serde_yaml::from_str::<Table>(&f.contents) {
+                Ok(table) => {
+                    if table.id() != stem {
+                        errors.push(format!(
+                            "{}: table id '{}' does not match filename '{}'",
+                            f.path,
+                            table.id(),
+                            stem
+                        ));
+                    } else {
+                        tables.push(json!({
+                            "path": f.path,
+                            "namespace": dir.namespace,
+                            "stem": stem,
+                            "table": table,
+                        }));
+                    }
+                }
+                Err(e) => errors.push(format!("{}: {e}", f.path)),
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        return json!({ "errors": errors }).to_string();
+    }
+
+    let ignored_yaml: Vec<&str> = raw_files
+        .iter()
+        .enumerate()
+        .filter(|(i, f)| !matched[*i] && is_yaml_name(&f.path))
+        .map(|(_, f)| f.path.as_str())
+        .collect();
+
+    let directories: Vec<serde_json::Value> = manifest
+        .directories
+        .iter()
+        .map(|d| json!({ "path": d.path.to_string_lossy(), "namespace": d.namespace }))
+        .collect();
+
+    json!({
+        "manifest": {
+            "name": manifest.name,
+            "version": manifest.version,
+            "namespace": manifest.namespace,
+            "author": manifest.author,
+            "min_tool_version": manifest.min_tool_version,
+            "directories": directories,
+        },
+        "tables": tables,
+        "ignored_yaml": ignored_yaml,
+    })
+    .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,5 +474,150 @@ mod tests {
             serde_json::from_str(&roll_collection(MANIFEST, &files_json(), "t.core.nope", 7))
                 .unwrap();
         assert!(out["error"].is_string());
+    }
+
+    const OPEN_MANIFEST: &str = "name: T\nversion: \"1.0\"\nnamespace: t\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: core/\n    namespace: t.core\n  - path: core/deep\n    namespace: t.core.deep\n";
+
+    const ORACLE_YAML: &str = "id: oracle\nname: Oracle\ntype: simple\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: \"Yes\"\n";
+
+    #[test]
+    fn parse_collection_discovers_and_parses() {
+        let files = serde_json::json!([
+            {"path": "core/oracle.yaml", "contents": ORACLE_YAML},
+            {"path": "core/deep/combo.yaml", "contents": "id: combo\nname: Combo\ntype: compound\ntables:\n  - oracle\n"},
+            {"path": "core/deep/nested/too-deep.yaml", "contents": "id: too-deep\nname: X\ntype: compound\ntables: []\n"},
+            {"path": "elsewhere/stray.yaml", "contents": "id: stray\nname: X\ntype: compound\ntables: []\n"},
+            {"path": "core/readme.txt", "contents": "not yaml"},
+            {"path": "core/other.manifest.yaml", "contents": "name: nested\n"}
+        ])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        assert!(out.get("errors").is_none(), "unexpected errors: {out}");
+
+        assert_eq!(out["manifest"]["name"], "T");
+        assert_eq!(out["manifest"]["namespace"], "t");
+        assert!(out["manifest"]["author"].is_null());
+        let dirs = out["manifest"]["directories"].as_array().unwrap();
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0]["path"], "core/");
+        assert_eq!(dirs[0]["namespace"], "t.core");
+
+        // Discovery is non-recursive: nested/too-deep.yaml and elsewhere/
+        // stray.yaml are not loaded; *.manifest.yaml and non-yaml are skipped.
+        let tables = out["tables"].as_array().unwrap();
+        assert_eq!(tables.len(), 2);
+        let oracle = tables.iter().find(|t| t["stem"] == "oracle").unwrap();
+        assert_eq!(oracle["path"], "core/oracle.yaml");
+        assert_eq!(oracle["namespace"], "t.core");
+        assert_eq!(oracle["table"]["type"], "simple");
+        assert_eq!(oracle["table"]["roll"], "1d6");
+        assert_eq!(oracle["table"]["results"][0]["text"], "Yes");
+        let combo = tables.iter().find(|t| t["stem"] == "combo").unwrap();
+        assert_eq!(combo["namespace"], "t.core.deep");
+        assert_eq!(combo["table"]["tables"][0], "oracle");
+
+        // Unloaded yaml is warned about; *.manifest.yaml inside a listed dir
+        // is silently skipped (mirrors on-disk discovery), non-yaml ignored.
+        let ignored: Vec<&str> = out["ignored_yaml"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ignored,
+            vec!["core/deep/nested/too-deep.yaml", "elsewhere/stray.yaml"]
+        );
+    }
+
+    #[test]
+    fn parse_collection_serializes_chain_forms() {
+        let files = serde_json::json!([{
+            "path": "core/a.yaml",
+            "contents": "id: a\nname: A\ntype: simple\nroll: 1d4\nmodifier_range: [0, 2]\nresults:\n  - min: 1\n    max: 6\n    text: X\n    chain:\n      - plain-ref\n      - table: a\n        reroll: [1]\n"
+        }])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        assert!(out.get("errors").is_none(), "unexpected errors: {out}");
+        let table = &out["tables"][0]["table"];
+        assert_eq!(table["modifier_range"], serde_json::json!([0, 2]));
+        let chain = table["results"][0]["chain"].as_array().unwrap();
+        assert_eq!(chain[0], "plain-ref");
+        assert_eq!(chain[1]["table"], "a");
+        assert_eq!(chain[1]["reroll"], serde_json::json!([1]));
+    }
+
+    #[test]
+    fn parse_collection_rejects_bad_manifest_yaml() {
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(": not [ yaml", "[]")).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().starts_with("manifest:"));
+    }
+
+    #[test]
+    fn parse_collection_rejects_files_entries() {
+        let manifest = "name: T\nversion: \"1.0\"\nnamespace: t\nauthor: ~\nmin_tool_version: ~\nfiles:\n  - path: a.yaml\n    namespace: t\n";
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(manifest, "[]")).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().contains("not supported"));
+    }
+
+    #[test]
+    fn parse_collection_rejects_malformed_files_json() {
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, "{ not json")).unwrap();
+        assert!(out["errors"][0].as_str().unwrap().starts_with("files:"));
+    }
+
+    #[test]
+    fn parse_collection_accumulates_all_errors() {
+        // All-or-nothing: one bad table plus one id mismatch plus one missing
+        // id -> three errors, no manifest/tables keys in the envelope.
+        let files = serde_json::json!([
+            {"path": "core/bad.yaml", "contents": ": not [ yaml"},
+            {"path": "core/mismatch.yaml", "contents": "id: other\nname: X\ntype: compound\ntables: []\n"},
+            {"path": "core/no-id.yaml", "contents": "name: X\ntype: compound\ntables: []\n"},
+            {"path": "core/oracle.yaml", "contents": ORACLE_YAML}
+        ])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 3, "expected 3 errors, got: {errs:?}");
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().starts_with("core/bad.yaml:"))
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().contains("does not match filename"))
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().starts_with("core/no-id.yaml:"))
+        );
+        assert!(out.get("manifest").is_none());
+        assert!(out.get("tables").is_none());
+    }
+
+    #[test]
+    fn parse_collection_does_not_validate_tables() {
+        // A range gap is a validation error, not a parse error: the table
+        // must import so the editor can fix it (ValidationPanel shows it).
+        let files = serde_json::json!([{
+            "path": "core/gappy.yaml",
+            "contents": "id: gappy\nname: Gappy\ntype: simple\nroll: 1d6\nresults:\n  - min: 1\n    max: 2\n    text: Low\n  - min: 5\n    max: 6\n    text: High\n"
+        }])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        assert!(out.get("errors").is_none(), "unexpected errors: {out}");
+        assert_eq!(out["tables"].as_array().unwrap().len(), 1);
     }
 }

@@ -72,6 +72,12 @@ export function manifestYaml(m: ManifestState, dirs: Dir[]): string {
   return lines.join('\n') + '\n';
 }
 
+function pushNotes(lines: string[], notes: string[]): void {
+  if (!notes.length) return;
+  lines.push('notes:');
+  for (const n of notes) lines.push(`  - ${yv(n)}`);
+}
+
 export function tableYaml(t: TableDraft): string {
   const lines = [`id: ${yv(t.stem)}`, `name: ${yv(t.name)}`, `type: ${t.type}`];
   if (t.tags.length) {
@@ -79,6 +85,7 @@ export function tableYaml(t: TableDraft): string {
     for (const tag of t.tags) lines.push(`  - ${yv(tag)}`);
   }
   if (t.type === 'compound') {
+    pushNotes(lines, t.notes);
     if (t.tableRefs.length) {
       lines.push('tables:');
       for (const r of t.tableRefs) lines.push(`  - ${yv(r.ref)}`);
@@ -86,10 +93,7 @@ export function tableYaml(t: TableDraft): string {
   } else {
     lines.push(`roll: ${yv(t.roll)}`);
     if (t.modOn) lines.push(`modifier_range: [${numOr0(t.modMin)}, ${numOr0(t.modMax)}]`);
-    if (t.notes.length) {
-      lines.push('notes:');
-      for (const n of t.notes) lines.push(`  - ${yv(n)}`);
-    }
+    pushNotes(lines, t.notes);
     if (t.results.length) lines.push('results:');
     for (const r of t.results) {
       lines.push(`  - min: ${numOr0(r.min)}`, `    max: ${numOr0(r.max)}`);
