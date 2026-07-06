@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Spectral:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  ::selection { background: #d8c08a; color: #2a2314; }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: #c1a978; border-radius: 6px; border: 3px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  input, textarea, button, select { font-family: inherit; }
+</style>
+</helmet>
+<div style="display:flex; flex-direction:column; height:100vh; min-height:0; background:#e3d7bb; color:#362d1e; font-family:'Spectral',Georgia,serif; font-size:15px; background-image: radial-gradient(circle at 20% 10%, rgba(255,250,235,.5), transparent 40%), radial-gradient(circle at 85% 90%, rgba(160,130,80,.10), transparent 45%);">
+
+  <header style="display:flex; align-items:center; gap:20px; padding:12px 22px; background:#3a2f1c; color:#eaddb9; border-bottom:3px double #9c7a2f; flex:0 0 auto;">
+    <div style="display:flex; flex-direction:column; line-height:1;">
+      <div style="font-family:'IM Fell English SC',serif; font-size:26px; letter-spacing:.5px; color:#e9d9a8;">Fatescroll</div>
+      <div style="font-family:'IM Fell English SC',serif; font-size:12px; letter-spacing:3px; color:#b79a5f; margin-top:2px;">TABLE FORGE</div>
+    </div>
+    <div style="width:1px; height:34px; background:#6a5834;"></div>
+    <div style="display:flex; flex-direction:column; gap:1px;">
+      <span style="font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:#9c855c;">Collection</span>
+      <span style="font-size:16px; color:#f0e6c8;">{{ manifest.name }}</span>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; align-items:center; gap:10px; padding:6px 14px; border-radius:3px; border:1px solid {{ status.border }}; background:{{ status.bg }};">
+      <span style="width:9px; height:9px; border-radius:50%; background:{{ status.dot }}; box-shadow:0 0 8px {{ status.dot }};"></span>
+      <span style="font-size:13px; color:{{ status.fg }}; letter-spacing:.3px;">{{ status.text }}</span>
+    </div>
+    <button onClick="{{ onExportZip }}" style="cursor:pointer; padding:9px 16px; border:1px solid #c79a3d; border-radius:3px; background:#9c7a2f; color:#fbf3d8; font-size:13px; letter-spacing:.5px; font-weight:600;" style-hover="background:#b18a37;">Export collection ▾</button>
+  </header>
+
+  <div style="flex:1; display:flex; min-height:0;">
+
+    <!-- ================= LEFT RAIL : TREE ================= -->
+    <aside style="flex:0 0 264px; background:#efe6cf; border-right:1px solid #c8b28a; display:flex; flex-direction:column; min-height:0;">
+      <div style="padding:14px 16px 8px; display:flex; align-items:center; justify-content:space-between;">
+        <span style="font-family:'IM Fell English SC',serif; font-size:13px; letter-spacing:2px; color:#8a744c;">SCRIPTORIUM</span>
+      </div>
+      <div style="overflow:auto; flex:1; padding:0 10px 16px;">
+        <div onClick="{{ onSelectManifest }}" style="cursor:pointer; display:flex; align-items:center; gap:9px; padding:8px 12px; margin-bottom:6px; border-radius:3px; border:1px solid {{ manifestNode.border }}; background:{{ manifestNode.bg }};" style-hover="border-color:#a98f63;">
+          <span style="font-size:14px;">⚜</span>
+          <span style="font-size:14px; color:{{ manifestNode.fg }}; font-weight:{{ manifestNode.weight }};">manifest.yaml</span>
+        </div>
+
+        <sc-for list="{{ treeDirs }}" as="d" hint-placeholder-count="3">
+          <div style="margin-top:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 8px 4px 6px;">
+              <div onClick="{{ d.onSelect }}" style="cursor:pointer; display:flex; flex-direction:column; line-height:1.15;">
+                <span style="font-size:13px; color:#5c4a2c; font-weight:600;">{{ d.path }}/</span>
+                <span style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#a08a5f;">{{ d.namespace }}</span>
+              </div>
+              <button onClick="{{ d.onAddTable }}" title="New table in this directory" style="cursor:pointer; width:22px; height:22px; line-height:1; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:15px;" style-hover="background:#eadfbf;">+</button>
+            </div>
+            <sc-for list="{{ d.tables }}" as="t" hint-placeholder-count="2">
+              <div onClick="{{ t.onSelect }}" style="cursor:pointer; display:flex; align-items:center; gap:8px; margin:2px 0 2px 12px; padding:6px 10px; border-radius:3px; border-left:2px solid {{ t.accent }}; background:{{ t.bg }};" style-hover="background:#e7dcbe;">
+                <span style="font-family:'JetBrains Mono',monospace; font-size:9px; padding:1px 4px; border-radius:2px; background:{{ t.badgeBg }}; color:{{ t.badgeFg }}; letter-spacing:.5px;">{{ t.typeShort }}</span>
+                <span style="font-size:13px; color:{{ t.fg }}; font-weight:{{ t.weight }}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ t.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+
+        <button onClick="{{ onAddDir }}" style="cursor:pointer; width:100%; margin-top:14px; padding:8px; border:1px dashed #b39a68; border-radius:3px; background:transparent; color:#8a744c; font-size:12px; letter-spacing:.5px;" style-hover="background:#e7dcbe;">+ add directory</button>
+      </div>
+    </aside>
+
+    <!-- ================= CENTER : EDITOR ================= -->
+    <main style="flex:1; overflow:auto; min-width:0; padding:22px 26px;">
+
+      <!-- EMPTY -->
+      <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#8a744c; text-align:center; gap:10px;">
+          <div style="font-size:40px; opacity:.5;">✦</div>
+          <div style="font-family:'IM Fell English SC',serif; font-size:20px;">Nothing selected</div>
+          <div style="font-size:14px; max-width:320px;">Pick a table from the scriptorium, or add one to a directory to begin inscribing.</div>
+        </div>
+      </sc-if>
+
+      <!-- MANIFEST EDITOR -->
+      <sc-if value="{{ isManifest }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:640px;">
+          <div style="font-family:'IM Fell English SC',serif; font-size:22px; color:#4a3a1e; letter-spacing:1px; margin-bottom:4px;">Collection Manifest</div>
+          <div style="font-size:13px; color:#8a744c; margin-bottom:22px;">Metadata and the directory-to-namespace map. Emitted as <span style="font-family:'JetBrains Mono',monospace;">manifest.yaml</span>.</div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px 20px; margin-bottom:26px;">
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Name</span>
+              <input value="{{ manifest.name }}" onChange="{{ onMfName }}" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Version</span>
+              <input value="{{ manifest.version }}" onChange="{{ onMfVersion }}" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Root namespace</span>
+              <input value="{{ manifest.namespace }}" onChange="{{ onMfNamespace }}" style="padding:8px 10px; border:1px solid {{ mfNsBorder }}; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Author <span style="text-transform:none; letter-spacing:0; color:#b0996b;">(optional)</span></span>
+              <input value="{{ manifest.author }}" onChange="{{ onMfAuthor }}" placeholder="~" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Min tool version <span style="text-transform:none; letter-spacing:0; color:#b0996b;">(optional)</span></span>
+              <input value="{{ manifest.minToolVersion }}" onChange="{{ onMfMtv }}" placeholder="~" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+            </label>
+          </div>
+
+          <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #c8b28a; padding-bottom:6px; margin-bottom:12px;">
+            <span style="font-family:'IM Fell English SC',serif; font-size:15px; letter-spacing:1.5px; color:#7a6033;">DIRECTORIES</span>
+            <button onClick="{{ onAddDir }}" style="cursor:pointer; padding:5px 12px; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:12px;" style-hover="background:#eadfbf;">+ add</button>
+          </div>
+          <sc-for list="{{ mfDirs }}" as="d" hint-placeholder-count="3">
+            <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:10px; align-items:end; margin-bottom:10px;">
+              <label style="display:flex; flex-direction:column; gap:4px;">
+                <span style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#a08a5f;">path</span>
+                <input value="{{ d.path }}" onChange="{{ d.onPath }}" style="padding:7px 9px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:13px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+              </label>
+              <label style="display:flex; flex-direction:column; gap:4px;">
+                <span style="font-size:10px; letter-spacing:1px; text-transform:uppercase; color:#a08a5f;">namespace</span>
+                <input value="{{ d.namespace }}" onChange="{{ d.onNs }}" style="padding:7px 9px; border:1px solid {{ d.nsBorder }}; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:13px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+              </label>
+              <button onClick="{{ d.onDel }}" title="Remove directory" style="cursor:pointer; height:34px; width:34px; border:1px solid #cbb08a; border-radius:3px; background:transparent; color:#9a3030; font-size:15px;" style-hover="background:#f0dede; border-color:#b06a6a;">✕</button>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- TABLE EDITOR -->
+      <sc-if value="{{ isTable }}" hint-placeholder-val="{{ false }}">
+        <div style="max-width:720px;">
+          <!-- header row -->
+          <div style="display:flex; align-items:flex-end; gap:14px; margin-bottom:6px;">
+            <label style="display:flex; flex-direction:column; gap:5px; flex:1;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Display name</span>
+              <input value="{{ current.name }}" onChange="{{ current.onName }}" style="padding:9px 12px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:19px; font-family:'IM Fell English SC',serif; letter-spacing:.5px; outline:none;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <button onClick="{{ current.onDelete }}" title="Delete table" style="cursor:pointer; height:40px; padding:0 14px; border:1px solid #cbb08a; border-radius:3px; background:transparent; color:#9a3030; font-size:13px;" style-hover="background:#f0dede; border-color:#b06a6a;">Delete</button>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr auto; gap:14px; align-items:end; margin-bottom:18px;">
+            <label style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">File / id <span style="text-transform:none; letter-spacing:0; color:#b0996b;">— becomes {{ current.stem }}.yaml</span></span>
+              <input value="{{ current.stem }}" onChange="{{ current.onStem }}" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+            </label>
+            <div style="display:flex; flex-direction:column; gap:5px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Type</span>
+              <div style="display:flex; border:1px solid #c0a76c; border-radius:3px; overflow:hidden;">
+                <button onClick="{{ current.onTypeSimple }}" style="cursor:pointer; padding:8px 16px; border:none; background:{{ current.simpleBg }}; color:{{ current.simpleFg }}; font-size:13px; font-weight:600;">simple</button>
+                <button onClick="{{ current.onTypeCompound }}" style="cursor:pointer; padding:8px 16px; border:none; border-left:1px solid #c0a76c; background:{{ current.compoundBg }}; color:{{ current.compoundFg }}; font-size:13px; font-weight:600;">compound</button>
+              </div>
+            </div>
+          </div>
+
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#a08a5f; margin:-8px 0 18px;">FQID · <span style="color:#7a6033;">{{ current.fqid }}</span></div>
+
+          <label style="display:flex; flex-direction:column; gap:5px; margin-bottom:18px;">
+            <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Tags <span style="text-transform:none; letter-spacing:0; color:#b0996b;">(comma separated)</span></span>
+            <input value="{{ current.tagsStr }}" onChange="{{ current.onTags }}" placeholder="encounter, wilderness" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none;" style-focus="border-color:#8b2b2b;" />
+          </label>
+
+          <!-- ===== SIMPLE ===== -->
+          <sc-if value="{{ current.isSimple }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid; grid-template-columns:auto 1fr; gap:14px; align-items:end; margin-bottom:16px;">
+              <label style="display:flex; flex-direction:column; gap:5px;">
+                <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Roll</span>
+                <input value="{{ current.roll }}" onChange="{{ current.onRoll }}" style="width:130px; padding:8px 10px; border:1px solid {{ current.rollBorder }}; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:15px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+              </label>
+              <div style="font-size:12px; color:{{ current.rollInfoColor }}; padding-bottom:9px;">{{ current.rollInfo }}</div>
+            </div>
+
+            <!-- modifier range -->
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; color:#5c4a2c;">
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;">
+                <input type="checkbox" checked="{{ current.modOn }}" onChange="{{ current.onModToggle }}" style="width:15px; height:15px; accent-color:#8b2b2b;" />
+                <span>modifier_range</span>
+              </label>
+              <sc-if value="{{ current.modOn }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace;">
+                  <span>[</span>
+                  <input value="{{ current.modMin }}" onChange="{{ current.onModMin }}" style="width:48px; padding:4px 6px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; text-align:center; outline:none;" style-focus="border-color:#8b2b2b;" />
+                  <span>,</span>
+                  <input value="{{ current.modMax }}" onChange="{{ current.onModMax }}" style="width:48px; padding:4px 6px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; text-align:center; outline:none;" style-focus="border-color:#8b2b2b;" />
+                  <span>]</span>
+                  <span style="font-family:'Spectral',serif; color:#8a744c; margin-left:6px;">effective span {{ current.effSpan }}</span>
+                </div>
+              </sc-if>
+            </div>
+
+            <!-- results -->
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #c8b28a; padding-bottom:6px; margin:18px 0 12px;">
+              <span style="font-family:'IM Fell English SC',serif; font-size:15px; letter-spacing:1.5px; color:#7a6033;">RESULTS</span>
+              <div style="display:flex; gap:8px;">
+                <button onClick="{{ current.onAutoRange }}" title="Distribute ranges to cover the dice with no gaps" style="cursor:pointer; padding:5px 12px; border:1px solid #6f7d4f; border-radius:3px; background:#eef0e0; color:#4f5d38; font-size:12px;" style-hover="background:#e3e6cf;">⚖ Auto-fill ranges</button>
+                <button onClick="{{ current.onAddResult }}" style="cursor:pointer; padding:5px 12px; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:12px;" style-hover="background:#eadfbf;">+ result</button>
+              </div>
+            </div>
+
+            <sc-for list="{{ current.results }}" as="r" hint-placeholder-count="4">
+              <div style="border:1px solid #cdb88f; border-left:3px solid #9c7a2f; border-radius:3px; background:#f6efdc; padding:12px 14px; margin-bottom:10px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:9px;">
+                  <div style="display:flex; align-items:center; gap:5px; font-family:'JetBrains Mono',monospace; font-size:13px;">
+                    <input value="{{ r.min }}" onChange="{{ r.onMin }}" inputmode="numeric" style="width:46px; padding:5px 4px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; text-align:center; outline:none;" style-focus="border-color:#8b2b2b;" />
+                    <span style="color:#a08a5f;">–</span>
+                    <input value="{{ r.max }}" onChange="{{ r.onMax }}" inputmode="numeric" style="width:46px; padding:5px 4px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; text-align:center; outline:none;" style-focus="border-color:#8b2b2b;" />
+                  </div>
+                  <span title="probability on the base roll" style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#4f5d38; background:#e7ead6; border:1px solid #c3cba3; padding:2px 7px; border-radius:10px;">{{ r.prob }}</span>
+                  <div style="flex:1;"></div>
+                  <button onClick="{{ r.onDel }}" title="Remove result" style="cursor:pointer; width:26px; height:26px; border:1px solid #cbb08a; border-radius:3px; background:transparent; color:#9a3030; font-size:13px;" style-hover="background:#f0dede;">✕</button>
+                </div>
+                <input value="{{ r.text }}" onChange="{{ r.onText }}" placeholder="Result text — supports {2d6x10} dice interpolation" style="width:100%; padding:7px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none;" style-focus="border-color:#8b2b2b;" />
+
+                <!-- chain -->
+                <div style="margin-top:10px; padding-left:10px; border-left:2px dotted #c3a86e;">
+                  <sc-for list="{{ r.chain }}" as="c" hint-placeholder-count="1">
+                    <div style="display:flex; align-items:center; gap:7px; margin-bottom:6px;">
+                      <span style="color:#a08a5f; font-family:'JetBrains Mono',monospace; font-size:12px;">↳</span>
+                      <input value="{{ c.ref }}" onChange="{{ c.onRef }}" placeholder="table reference" style="flex:1; padding:5px 9px; border:1px solid {{ c.border }}; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:13px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+                      <sc-if value="{{ c.isStruct }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex; align-items:center; gap:5px; font-size:12px; color:#7a6033;">
+                          <span style="font-family:'JetBrains Mono',monospace;">reroll</span>
+                          <input value="{{ c.rerollStr }}" onChange="{{ c.onReroll }}" placeholder="1, 2" style="width:64px; padding:5px 7px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; text-align:center; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+                        </div>
+                      </sc-if>
+                      <button onClick="{{ c.onToggle }}" title="Toggle reroll modifier" style="cursor:pointer; padding:4px 9px; border:1px solid {{ c.toggleBorder }}; border-radius:3px; background:{{ c.toggleBg }}; color:{{ c.toggleFg }}; font-size:11px; font-family:'JetBrains Mono',monospace;">↺</button>
+                      <button onClick="{{ c.onDel }}" title="Remove chain" style="cursor:pointer; width:24px; height:24px; border:1px solid #cbb08a; border-radius:3px; background:transparent; color:#9a3030; font-size:12px;" style-hover="background:#f0dede;">✕</button>
+                    </div>
+                  </sc-for>
+                  <button onClick="{{ r.onAddChain }}" style="cursor:pointer; padding:3px 10px; border:1px dashed #b39a68; border-radius:3px; background:transparent; color:#8a744c; font-size:11px;" style-hover="background:#efe6cf;">+ chain to table</button>
+                </div>
+              </div>
+            </sc-for>
+
+            <!-- notes -->
+            <label style="display:flex; flex-direction:column; gap:5px; margin-top:18px;">
+              <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#8a744c;">Notes <span style="text-transform:none; letter-spacing:0; color:#b0996b;">(one per line, optional)</span></span>
+              <textarea value="{{ current.notesStr }}" onChange="{{ current.onNotes }}" rows="2" placeholder="GM guidance, provenance, usage…" style="padding:8px 10px; border:1px solid #c8b28a; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; resize:vertical; font-family:'Spectral',serif;" style-focus="border-color:#8b2b2b;"></textarea>
+            </label>
+          </sc-if>
+
+          <!-- ===== COMPOUND ===== -->
+          <sc-if value="{{ current.isCompound }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #c8b28a; padding-bottom:6px; margin:6px 0 12px;">
+              <span style="font-family:'IM Fell English SC',serif; font-size:15px; letter-spacing:1.5px; color:#7a6033;">SUB-TABLES</span>
+              <button onClick="{{ current.onAddRef }}" style="cursor:pointer; padding:5px 12px; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:12px;" style-hover="background:#eadfbf;">+ table</button>
+            </div>
+            <div style="font-size:13px; color:#8a744c; margin-bottom:14px;">Each sub-table is rolled when this compound table is rolled; results are combined.</div>
+            <sc-for list="{{ current.compRefs }}" as="c" hint-placeholder-count="3">
+              <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                <span style="color:#a08a5f; font-family:'JetBrains Mono',monospace; font-size:13px;">◈</span>
+                <input value="{{ c.ref }}" onChange="{{ c.onRef }}" placeholder="table reference" style="flex:1; padding:7px 10px; border:1px solid {{ c.border }}; border-radius:3px; background:#fbf6e9; color:#362d1e; font-size:14px; outline:none; font-family:'JetBrains Mono',monospace;" style-focus="border-color:#8b2b2b;" />
+                <button onClick="{{ c.onDel }}" title="Remove" style="cursor:pointer; width:28px; height:28px; border:1px solid #cbb08a; border-radius:3px; background:transparent; color:#9a3030; font-size:13px;" style-hover="background:#f0dede;">✕</button>
+              </div>
+            </sc-for>
+          </sc-if>
+        </div>
+      </sc-if>
+    </main>
+
+    <!-- ================= RIGHT : YAML + VALIDATION ================= -->
+    <section style="flex:0 0 440px; min-width:0; background:#efe6cf; border-left:1px solid #c8b28a; display:flex; flex-direction:column; min-height:0;">
+
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 16px 8px;">
+        <span style="font-family:'IM Fell English SC',serif; font-size:13px; letter-spacing:2px; color:#8a744c;">{{ yamlTitle }}</span>
+        <div style="display:flex; gap:7px;">
+          <button onClick="{{ onCopy }}" style="cursor:pointer; padding:5px 12px; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:12px;" style-hover="background:#eadfbf;">{{ copyLabel }}</button>
+          <button onClick="{{ onDownload }}" style="cursor:pointer; padding:5px 12px; border:1px solid #c0a76c; border-radius:3px; background:#f7f0dc; color:#7a6033; font-size:12px;" style-hover="background:#eadfbf;">⬇ .yaml</button>
+        </div>
+      </div>
+
+      <div style="margin:0 14px; flex:1; min-width:0; min-height:0; border:1px solid #2f2718; border-radius:4px; background:#241d12; overflow:auto;">
+        <pre style="margin:0; padding:14px 16px; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.65; color:#d9c99a; white-space:pre; tab-size:2;">{{ yamlText }}</pre>
+      </div>
+
+      <!-- validation -->
+      <div style="flex:0 0 auto; max-height:34%; overflow:auto; margin:12px 14px 6px; border-top:1px solid #c8b28a; padding-top:10px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="font-family:'IM Fell English SC',serif; font-size:13px; letter-spacing:2px; color:#8a744c;">VALIDATION</span>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#a08a5f;">fatescroll validate</span>
+        </div>
+        <sc-if value="{{ valid }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex; align-items:center; gap:8px; font-size:14px; color:#4f5d38;"><span>✓</span><span>Collection is valid.</span></div>
+        </sc-if>
+        <sc-for list="{{ problems }}" as="p" hint-placeholder-count="0">
+          <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.45; color:{{ p.color }};">
+            <span>{{ p.icon }}</span><span>{{ p.msg }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <!-- test roll -->
+      <div style="flex:0 0 auto; margin:0 14px 14px; border-top:1px solid #c8b28a; padding-top:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+          <span style="font-family:'IM Fell English SC',serif; font-size:13px; letter-spacing:2px; color:#8a744c;">CAST THE DICE</span>
+          <button onClick="{{ onRoll }}" style="cursor:pointer; padding:6px 16px; border:1px solid #7a2323; border-radius:3px; background:#8b2b2b; color:#f4e3c8; font-size:12px; letter-spacing:.5px; font-weight:600;" style-hover="background:#a03434;">⚄ Roll</button>
+        </div>
+        <div style="min-height:24px; background:#f6efdc; border:1px solid #cdb88f; border-radius:3px; padding:8px 10px; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.55; color:#5c4a2c;">
+          <sc-if value="{{ noRoll }}" hint-placeholder-val="{{ true }}">
+            <span style="color:#a08a5f;">— roll a table to preview an outcome —</span>
+          </sc-if>
+          <sc-for list="{{ rollLines }}" as="l" hint-placeholder-count="0">
+            <div style="padding-left:{{ l.pad }}px; color:{{ l.color }};">{{ l.label }}</div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this._id = 1;
+    const seed = this.buildSeed();
+    this.state = {
+      manifest: seed.manifest,
+      dirs: seed.dirs,
+      tables: seed.tables,
+      view: 'table',
+      selUid: seed.tables[1].uid,
+      copyLabel: '⧉ copy',
+      rollLines: null,
+    };
+  }
+
+  nid(p) { return (p || 'x') + (this._id++); }
+
+  buildSeed() {
+    const mkr = (min, max, text, chain) => ({ rid: this.nid('r'), min: String(min), max: String(max), text: text, chain: chain || [] });
+    const ch = (ref) => ({ rid: this.nid('c'), struct: false, ref: ref, table: '', reroll: [] });
+    const d1 = this.nid('d'), d2 = this.nid('d'), d3 = this.nid('d');
+    const dirs = [
+      { id: d1, path: 'terrain', namespace: 'my.terrain' },
+      { id: d2, path: 'encounters', namespace: 'my.encounters' },
+      { id: d3, path: 'npc', namespace: 'my.npc' },
+    ];
+    const simple = (dirId, stem, name, tags, roll, results, extra) => Object.assign({
+      uid: this.nid('t'), dirId, stem, name, type: 'simple', tags,
+      roll, modOn: false, modMin: '0', modMax: '0', notes: [], results, tablesRefs: [],
+    }, extra || {});
+    const compound = (dirId, stem, name, tags, refs) => ({
+      uid: this.nid('t'), dirId, stem, name, type: 'compound', tags,
+      roll: '1d6', modOn: false, modMin: '0', modMax: '0', notes: [], results: [],
+      tablesRefs: refs.map(r => ({ rid: this.nid('cr'), ref: r })),
+    });
+    const tables = [
+      simple(d1, 'wilderness', 'Wilderness Terrain', ['terrain', 'wilderness'], '1d6', [
+        mkr(1, 3, 'Dense forest'), mkr(4, 5, 'Open plains'), mkr(6, 6, 'Rocky hills'),
+      ]),
+      simple(d2, 'wilderness-encounter', 'Wilderness Encounter', ['encounter', 'wilderness'], '1d8', [
+        mkr(1, 3, 'Animal encounter', [ch('animal-type')]),
+        mkr(4, 5, 'Bandit camp', [ch('bandit-strength'), ch('bandit-motivation')]),
+        mkr(6, 7, 'Abandoned campsite'),
+        mkr(8, 8, 'Merchant with {2d6x10} gold', [ch('merchant-goods')]),
+      ], { notes: ["Roll once per watch; apply terrain modifiers at the GM's discretion"] }),
+      simple(d2, 'animal-type', 'Animal Type', ['encounter', 'animal'], '1d6', [
+        mkr(1, 2, 'Pack of wolves'), mkr(3, 3, 'Territorial bear'), mkr(4, 5, 'Skittish deer'), mkr(6, 6, 'Giant spider'),
+      ]),
+      simple(d2, 'bandit-strength', 'Bandit Strength', ['encounter', 'bandit'], '1d4', [
+        mkr(1, 1, 'Small group (2-3 bandits)'), mkr(2, 3, 'Medium group (4-6 bandits)'), mkr(4, 4, 'Large band (7-10 bandits)'),
+      ]),
+      simple(d2, 'bandit-motivation', 'Bandit Motivation', ['encounter', 'bandit'], '1d4', [
+        mkr(1, 1, 'Desperate and hungry'), mkr(2, 2, 'Organized toll collectors'), mkr(3, 3, 'Deserters from a nearby army'), mkr(4, 4, 'Cultists in disguise'),
+      ]),
+      simple(d2, 'merchant-goods', 'Merchant Goods', ['encounter', 'merchant'], '1d6', [
+        mkr(1, 2, 'Exotic spices and silks'), mkr(3, 4, 'Common tools and rations'), mkr(5, 5, 'Rare alchemical reagents'), mkr(6, 6, 'Stolen goods, poorly hidden'),
+      ]),
+      simple(d3, 'npc-occupation', 'NPC Occupation', ['npc'], '1d6', [
+        mkr(1, 1, 'Blacksmith'), mkr(2, 2, 'Farmer'), mkr(3, 3, 'Scholar'), mkr(4, 4, 'Merchant'), mkr(5, 5, 'Guard'), mkr(6, 6, 'Priest'),
+      ]),
+      simple(d3, 'npc-disposition', 'NPC Disposition', ['npc'], '1d6', [
+        mkr(1, 2, 'Friendly'), mkr(3, 4, 'Neutral'), mkr(5, 5, 'Suspicious'), mkr(6, 6, 'Hostile'),
+      ]),
+      simple(d3, 'npc-quirk', 'NPC Quirk', ['npc'], '1d6', [
+        mkr(1, 1, 'Speaks in rhymes'), mkr(2, 2, 'Collects odd trinkets'), mkr(3, 3, 'Never makes eye contact'), mkr(4, 4, 'Laughs nervously'), mkr(5, 5, 'Chews on a toothpick'), mkr(6, 6, 'Quotes old proverbs'),
+      ]),
+      compound(d3, 'quick-npc', 'Quick NPC Generator', ['npc', 'generator'], ['npc-occupation', 'npc-disposition', 'npc-quirk']),
+    ];
+    return {
+      manifest: { name: 'My Collection', version: '1.0', namespace: 'my', author: '', minToolVersion: '' },
+      dirs, tables,
+    };
+  }
+
+  // ---------- dice engine ----------
+  diceInfo(expr) {
+    const s = String(expr || '').trim();
+    if (/^d?66$/i.test(s)) {
+      const values = [];
+      for (let t = 1; t <= 6; t++) for (let u = 1; u <= 6; u++) values.push(t * 10 + u);
+      const dist = new Map(values.map(v => [v, 1 / 36]));
+      return { ok: true, values, dist, min: 11, max: 66, kind: 'd66' };
+    }
+    const m = s.match(/^(\d*)d(f|\d+)(?:\s*[x*]\s*(\d+))?\s*([+-]\s*\d+)?$/i);
+    if (!m) return { ok: false };
+    const n = m[1] ? parseInt(m[1], 10) : 1;
+    if (n < 1 || n > 40) return { ok: false };
+    let faces;
+    if (/^f$/i.test(m[2])) faces = [-1, 0, 1];
+    else { const sd = parseInt(m[2], 10); if (sd < 1 || sd > 1000) return { ok: false }; faces = []; for (let i = 1; i <= sd; i++) faces.push(i); }
+    let dist = new Map([[0, 1]]);
+    for (let i = 0; i < n; i++) {
+      const nd = new Map();
+      dist.forEach((cnt, k) => { faces.forEach(f => { const key = k + f; nd.set(key, (nd.get(key) || 0) + cnt); }); });
+      dist = nd;
+    }
+    const mult = m[3] ? parseInt(m[3], 10) : 1;
+    const add = m[4] ? parseInt(m[4].replace(/\s+/g, ''), 10) : 0;
+    const fin = new Map();
+    dist.forEach((cnt, k) => { const key = k * mult + add; fin.set(key, (fin.get(key) || 0) + cnt); });
+    const total = Array.from(fin.values()).reduce((a, b) => a + b, 0);
+    const prob = new Map(); fin.forEach((c, k) => prob.set(k, c / total));
+    const values = Array.from(prob.keys()).sort((a, b) => a - b);
+    return { ok: true, values, dist: prob, min: values[0], max: values[values.length - 1], kind: 'normal' };
+  }
+
+  sampleRoll(expr) {
+    const s = String(expr || '').trim();
+    if (/^d?66$/i.test(s)) { const t = 1 + Math.floor(Math.random() * 6), u = 1 + Math.floor(Math.random() * 6); return t * 10 + u; }
+    const m = s.match(/^(\d*)d(f|\d+)(?:\s*[x*]\s*(\d+))?\s*([+-]\s*\d+)?$/i);
+    if (!m) return null;
+    const n = m[1] ? parseInt(m[1], 10) : 1;
+    let sum = 0;
+    if (/^f$/i.test(m[2])) { for (let i = 0; i < n; i++) sum += Math.floor(Math.random() * 3) - 1; }
+    else { const sd = parseInt(m[2], 10); for (let i = 0; i < n; i++) sum += 1 + Math.floor(Math.random() * sd); }
+    const mult = m[3] ? parseInt(m[3], 10) : 1;
+    const add = m[4] ? parseInt(m[4].replace(/\s+/g, ''), 10) : 0;
+    return sum * mult + add;
+  }
+
+  interpolate(text) {
+    return String(text || '').replace(/\{([^}]+)\}/g, (whole, expr) => {
+      const v = this.sampleRoll(expr.trim());
+      return v === null ? whole : String(v);
+    });
+  }
+
+  // ---------- yaml helpers ----------
+  yv(s) {
+    s = String(s);
+    let q = false;
+    if (s === '') q = true;
+    else if (/^\s|\s$/.test(s)) q = true;
+    else if (/^[-?:,\[\]{}#&*!|>'"%@`]/.test(s)) q = true;
+    else if (/[{}\[\]]/.test(s)) q = true;
+    else if (/:\s/.test(s) || /\s#/.test(s)) q = true;
+    else if (/^(true|false|null|yes|no|on|off|~)$/i.test(s)) q = true;
+    else if (/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) q = true;
+    if (!q) return s;
+    return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  }
+
+  tableYaml(t) {
+    const L = [];
+    L.push('id: ' + this.yv(t.stem));
+    L.push('name: ' + this.yv(t.name));
+    L.push('type: ' + t.type);
+    if (t.tags && t.tags.length) { L.push('tags:'); t.tags.forEach(tg => L.push('  - ' + this.yv(tg))); }
+    if (t.type === 'compound') {
+      L.push('tables:');
+      (t.tablesRefs || []).forEach(r => L.push('  - ' + this.yv(r.ref)));
+      return L.join('\n') + '\n';
+    }
+    L.push('roll: ' + this.yv(t.roll));
+    if (t.modOn) L.push('modifier_range: [' + this.intOr(t.modMin, 0) + ', ' + this.intOr(t.modMax, 0) + ']');
+    const notes = (t.notes || []).filter(n => n.trim() !== '');
+    if (notes.length) { L.push('notes:'); notes.forEach(n => L.push('  - ' + this.yv(n))); }
+    L.push('results:');
+    (t.results || []).forEach(r => {
+      L.push('  - min: ' + this.intOr(r.min, 0));
+      L.push('    max: ' + this.intOr(r.max, 0));
+      if (String(r.text || '') !== '') L.push('    text: ' + this.yv(r.text));
+      if (r.chain && r.chain.length) {
+        L.push('    chain:');
+        r.chain.forEach(c => {
+          if (c.struct) {
+            L.push('      - table: ' + this.yv(c.ref));
+            L.push('        reroll: [' + (c.reroll || []).join(', ') + ']');
+          } else {
+            L.push('      - ' + this.yv(c.ref));
+          }
+        });
+      }
+    });
+    return L.join('\n') + '\n';
+  }
+
+  manifestYaml() {
+    const m = this.state.manifest;
+    const L = [];
+    L.push('name: ' + this.yv(m.name));
+    L.push('version: "' + String(m.version).replace(/"/g, '\\"') + '"');
+    L.push('namespace: ' + this.yv(m.namespace));
+    L.push('author: ' + (m.author && m.author.trim() ? this.yv(m.author) : '~'));
+    L.push('min_tool_version: ' + (m.minToolVersion && m.minToolVersion.trim() ? this.yv(m.minToolVersion) : '~'));
+    if (this.state.dirs.length) {
+      L.push('directories:');
+      this.state.dirs.forEach(d => { L.push('  - path: ' + this.yv(d.path)); L.push('    namespace: ' + this.yv(d.namespace)); });
+    }
+    return L.join('\n') + '\n';
+  }
+
+  intOr(v, d) { const n = parseInt(v, 10); return isNaN(n) ? d : n; }
+
+  // ---------- resolution / validation ----------
+  dirOf(t) { return this.state.dirs.find(d => d.id === t.dirId); }
+  nsOf(t) { const d = this.dirOf(t); return d ? d.namespace : ''; }
+  fqid(t) { return this.nsOf(t) + '.' + t.stem; }
+  fqidMap() { const map = new Map(); this.state.tables.forEach(t => map.set(this.fqid(t), t)); return map; }
+  resolve(ref, fromNs, map) {
+    if (!ref) return null;
+    const rel = fromNs + '.' + ref;
+    if (map.has(rel)) return map.get(rel);
+    if (map.has(ref)) return map.get(ref);
+    return null;
+  }
+  nsError(ns) {
+    const segs = String(ns).split('.');
+    for (const seg of segs) { if (!/^[a-z][a-z0-9_-]*$/.test(seg)) return { seg, ns }; }
+    return null;
+  }
+
+  validate() {
+    const problems = [];
+    const map = this.fqidMap();
+    // namespace: root + dirs
+    const rootErr = this.nsError(this.state.manifest.namespace);
+    if (rootErr) problems.push({ msg: "invalid namespace '" + rootErr.ns + "': segment '" + rootErr.seg + "' must match [a-z][a-z0-9_-]*", level: 'error' });
+    this.state.dirs.forEach(d => { const e = this.nsError(d.namespace); if (e) problems.push({ msg: "invalid namespace '" + e.ns + "': segment '" + e.seg + "' must match [a-z][a-z0-9_-]*", level: 'error' }); });
+
+    this.state.tables.forEach(t => {
+      const name = t.name;
+      const ns = this.nsOf(t);
+      if (t.type === 'compound') {
+        (t.tablesRefs || []).forEach(r => { if (!this.resolve(r.ref, ns, map)) problems.push({ msg: "unresolved compound table reference '" + r.ref + "' in table '" + name + "'", level: 'error' }); });
+        return;
+      }
+      const di = this.diceInfo(t.roll);
+      if (!di.ok) { problems.push({ msg: "invalid dice expression '" + t.roll + "' in table '" + name + "'", level: 'error' }); }
+      else {
+        // reversed
+        (t.results || []).forEach(r => { const a = parseInt(r.min, 10), b = parseInt(r.max, 10); if (!isNaN(a) && !isNaN(b) && a > b) problems.push({ msg: 'range reversed: min ' + a + ' > max ' + b + " in table '" + name + "'", level: 'error' }); });
+        // expected values (with modifier_range)
+        let expected = new Set(di.values);
+        if (t.modOn) {
+          const lo = this.intOr(t.modMin, 0), hi = this.intOr(t.modMax, 0);
+          expected = new Set();
+          di.values.forEach(v => { for (let mo = lo; mo <= hi; mo++) expected.add(v + mo); });
+        }
+        const cover = new Map();
+        (t.results || []).forEach(r => { const a = parseInt(r.min, 10), b = parseInt(r.max, 10); if (isNaN(a) || isNaN(b) || a > b) return; for (let v = a; v <= b; v++) cover.set(v, (cover.get(v) || 0) + 1); });
+        const missing = [];
+        Array.from(expected).sort((a, b) => a - b).forEach(v => { if (!cover.get(v)) missing.push(v); });
+        const overlap = [];
+        cover.forEach((c, v) => { if (c > 1 && expected.has(v)) overlap.push(v); });
+        overlap.sort((a, b) => a - b);
+        if (missing.length) problems.push({ msg: "range gap in table '" + name + "': missing values [" + missing.join(', ') + ']', level: 'error' });
+        if (overlap.length) problems.push({ msg: "range overlap in table '" + name + "': values [" + overlap.join(', ') + '] covered multiple times', level: 'error' });
+      }
+      // chain refs
+      (t.results || []).forEach(r => { (r.chain || []).forEach(c => { if (c.ref && !this.resolve(c.ref, ns, map)) problems.push({ msg: "unresolved chain reference '" + c.ref + "' in table '" + name + "'", level: 'error' }); }); });
+    });
+    return problems;
+  }
+
+  // ---------- test roll ----------
+  doRoll() {
+    const cur = this.current();
+    if (!cur) return;
+    const map = this.fqidMap();
+    const lines = [];
+    this.rollTable(cur, 0, lines, map, 0, null);
+    this.setState({ rollLines: lines });
+  }
+  rollTable(t, indent, lines, map, depth, rerollSet) {
+    if (depth > 10) { lines.push({ label: "chain depth limit (10) exceeded at table '" + t.name + "'", indent, err: true }); return; }
+    const ns = this.nsOf(t);
+    if (t.type === 'compound') {
+      lines.push({ label: t.name, indent });
+      (t.tablesRefs || []).forEach(r => { const child = this.resolve(r.ref, ns, map); if (child) this.rollTable(child, indent + 1, lines, map, depth + 1, null); else lines.push({ label: "· unresolved: " + r.ref, indent: indent + 1, err: true }); });
+      return;
+    }
+    const di = this.diceInfo(t.roll);
+    if (!di.ok) { lines.push({ label: t.name + ': (bad dice ' + t.roll + ')', indent, err: true }); return; }
+    let v = null;
+    for (let i = 0; i < 100; i++) { v = this.sampleRoll(t.roll); if (!rerollSet || !rerollSet.has(v)) break; }
+    const row = (t.results || []).find(r => { const a = parseInt(r.min, 10), b = parseInt(r.max, 10); return !isNaN(a) && !isNaN(b) && v >= a && v <= b; });
+    const txt = row ? this.interpolate(row.text) : '(no matching result)';
+    lines.push({ label: t.name + ' (rolled ' + v + '): ' + txt, indent });
+    if (row && row.chain) row.chain.forEach(c => { const child = this.resolve(c.ref, ns, map); if (child) { const rr = c.struct && c.reroll && c.reroll.length ? new Set(c.reroll) : null; this.rollTable(child, indent + 1, lines, map, depth + 1, rr); } });
+  }
+
+  // ---------- mutations ----------
+  current() { return this.state.tables.find(t => t.uid === this.state.selUid) || null; }
+  patchTable(uid, patch) { this.setState(s => ({ tables: s.tables.map(t => t.uid === uid ? Object.assign({}, t, patch) : t), rollLines: null })); }
+  patchManifest(patch) { this.setState(s => ({ manifest: Object.assign({}, s.manifest, patch) })); }
+
+  addDir() {
+    const id = this.nid('d');
+    const base = this.state.manifest.namespace || 'my';
+    let n = this.state.dirs.length + 1, path = 'new-dir';
+    const existing = new Set(this.state.dirs.map(d => d.path));
+    if (existing.has(path)) { let k = 2; while (existing.has('new-dir-' + k)) k++; path = 'new-dir-' + k; }
+    this.setState(s => ({ dirs: s.dirs.concat([{ id, path, namespace: base + '.' + path }]), view: 'manifest' }));
+  }
+  patchDir(id, patch) { this.setState(s => ({ dirs: s.dirs.map(d => d.id === id ? Object.assign({}, d, patch) : d) })); }
+  delDir(id) {
+    const hasTables = this.state.tables.some(t => t.dirId === id);
+    if (hasTables && !confirm('This directory has tables. Remove it and its tables?')) return;
+    this.setState(s => ({ dirs: s.dirs.filter(d => d.id !== id), tables: s.tables.filter(t => t.dirId !== id) }));
+  }
+
+  uniqueStem(base) { const set = new Set(this.state.tables.map(t => t.stem)); if (!set.has(base)) return base; let k = 2; while (set.has(base + '-' + k)) k++; return base + '-' + k; }
+  addTable(dirId) {
+    const uid = this.nid('t');
+    const stem = this.uniqueStem('new-table');
+    const t = { uid, dirId, stem, name: 'New Table', type: 'simple', tags: [], roll: '1d6', modOn: false, modMin: '0', modMax: '0', notes: [], results: [{ rid: this.nid('r'), min: '1', max: '6', text: '', chain: [] }], tablesRefs: [] };
+    this.setState(s => ({ tables: s.tables.concat([t]), selUid: uid, view: 'table', rollLines: null }));
+  }
+  delTable(uid) {
+    if (!confirm('Delete this table?')) return;
+    this.setState(s => { const remaining = s.tables.filter(t => t.uid !== uid); return { tables: remaining, selUid: remaining.length ? remaining[0].uid : null, view: remaining.length ? 'table' : 'empty', rollLines: null }; });
+  }
+
+  setType(uid, type) { this.patchTable(uid, { type }); }
+  setResult(uid, rid, patch) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.map(r => r.rid === rid ? Object.assign({}, r, patch) : r) })), rollLines: null })); }
+  addResult(uid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.concat([{ rid: this.nid('r'), min: '', max: '', text: '', chain: [] }]) })), rollLines: null })); }
+  delResult(uid, rid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.filter(r => r.rid !== rid) })), rollLines: null })); }
+  autoRange(uid) {
+    this.setState(s => ({
+      tables: s.tables.map(t => {
+        if (t.uid !== uid) return t;
+        const di = this.diceInfo(t.roll);
+        if (!di.ok) return t;
+        // effective contiguous span
+        let lo = di.min, hi = di.max;
+        if (t.modOn) { lo = di.min + this.intOr(t.modMin, 0); hi = di.max + this.intOr(t.modMax, 0); }
+        if (di.kind === 'd66') {
+          // one row per value, preserve existing text by position
+          const vals = di.values;
+          const rows = vals.map((v, i) => ({ rid: (t.results[i] && t.results[i].rid) || this.nid('r'), min: String(v), max: String(v), text: (t.results[i] && t.results[i].text) || '', chain: (t.results[i] && t.results[i].chain) || [] }));
+          return Object.assign({}, t, { results: rows });
+        }
+        const span = hi - lo + 1;
+        const k = Math.max(1, t.results.length || 1);
+        const rows = [];
+        let cursor = lo;
+        for (let i = 0; i < k; i++) {
+          const size = Math.floor(span / k) + (i < (span % k) ? 1 : 0);
+          const a = cursor, b = cursor + size - 1;
+          cursor = b + 1;
+          const old = t.results[i] || {};
+          rows.push({ rid: old.rid || this.nid('r'), min: String(a), max: String(b), text: old.text || '', chain: old.chain || [] });
+        }
+        return Object.assign({}, t, { results: rows });
+      }),
+      rollLines: null,
+    }));
+  }
+
+  addChain(uid, rid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.map(r => r.rid !== rid ? r : Object.assign({}, r, { chain: r.chain.concat([{ rid: this.nid('c'), struct: false, ref: '', table: '', reroll: [] }]) })) })), rollLines: null })); }
+  patchChain(uid, rid, cid, patch) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.map(r => r.rid !== rid ? r : Object.assign({}, r, { chain: r.chain.map(c => c.rid === cid ? Object.assign({}, c, patch) : c) })) })), rollLines: null })); }
+  delChain(uid, rid, cid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { results: t.results.map(r => r.rid !== rid ? r : Object.assign({}, r, { chain: r.chain.filter(c => c.rid !== cid) })) })), rollLines: null })); }
+
+  addRef(uid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { tablesRefs: t.tablesRefs.concat([{ rid: this.nid('cr'), ref: '' }]) })), rollLines: null })); }
+  patchRef(uid, rid, ref) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { tablesRefs: t.tablesRefs.map(r => r.rid === rid ? { rid, ref } : r) })), rollLines: null })); }
+  delRef(uid, rid) { this.setState(s => ({ tables: s.tables.map(t => t.uid !== uid ? t : Object.assign({}, t, { tablesRefs: t.tablesRefs.filter(r => r.rid !== rid) })), rollLines: null })); }
+
+  // ---------- export ----------
+  slug(s) { return String(s || 'collection').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'collection'; }
+  download(name, text) {
+    const blob = new Blob([text], { type: 'text/yaml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  copyCurrent() {
+    const txt = this.currentYaml();
+    const done = () => { this.setState({ copyLabel: '✓ copied' }); setTimeout(() => this.setState({ copyLabel: '⧉ copy' }), 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+    else done();
+  }
+  downloadCurrent() {
+    if (this.state.view === 'manifest') { this.download('manifest.yaml', this.manifestYaml()); return; }
+    const t = this.current(); if (t) this.download(t.stem + '.yaml', this.tableYaml(t));
+  }
+  currentYaml() { if (this.state.view === 'manifest') return this.manifestYaml(); const t = this.current(); return t ? this.tableYaml(t) : ''; }
+
+  // minimal store-method zip
+  crc32(bytes) {
+    let c, crc = 0xFFFFFFFF;
+    for (let i = 0; i < bytes.length; i++) { c = (crc ^ bytes[i]) & 0xFF; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); crc = (crc >>> 8) ^ c; }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  makeZip(files) {
+    const enc = new TextEncoder();
+    const chunks = []; const central = []; let offset = 0;
+    const u16 = n => [n & 0xFF, (n >>> 8) & 0xFF];
+    const u32 = n => [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF];
+    files.forEach(f => {
+      const nameB = enc.encode(f.name); const data = enc.encode(f.data); const crc = this.crc32(data);
+      const local = [].concat(u32(0x04034b50), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0));
+      chunks.push(new Uint8Array(local), nameB, data);
+      const cen = [].concat(u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(0), u16(0), u32(crc), u32(data.length), u32(data.length), u16(nameB.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset));
+      central.push({ head: new Uint8Array(cen), name: nameB });
+      offset += local.length + nameB.length + data.length;
+    });
+    const cstart = offset; let clen = 0;
+    central.forEach(c => { chunks.push(c.head, c.name); clen += c.head.length + c.name.length; });
+    const end = [].concat(u32(0x06054b50), u16(0), u16(0), u16(central.length), u16(central.length), u32(clen), u32(cstart), u16(0));
+    chunks.push(new Uint8Array(end));
+    return new Blob(chunks, { type: 'application/zip' });
+  }
+  exportZip() {
+    const root = this.slug(this.state.manifest.name) + '/';
+    const files = [{ name: root + 'manifest.yaml', data: this.manifestYaml() }];
+    this.state.tables.forEach(t => { const d = this.dirOf(t); const path = d ? d.path : 'tables'; files.push({ name: root + path + '/' + t.stem + '.yaml', data: this.tableYaml(t) }); });
+    const blob = this.makeZip(files);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = this.slug(this.state.manifest.name) + '.zip'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  // ---------- render ----------
+  probStr(di, r) {
+    if (!di.ok) return '—';
+    const a = parseInt(r.min, 10), b = parseInt(r.max, 10);
+    if (isNaN(a) || isNaN(b)) return '—';
+    let p = 0; di.dist.forEach((pr, v) => { if (v >= a && v <= b) p += pr; });
+    if (p === 0) return '0%';
+    const pct = p * 100;
+    return (pct < 10 ? pct.toFixed(1) : Math.round(pct)) + '%';
+  }
+
+  renderVals() {
+    const st = this.state;
+    const problems = this.validate();
+    const valid = problems.length === 0;
+    const cur = this.current();
+    const map = this.fqidMap();
+
+    const status = valid
+      ? { text: 'Collection is valid', dot: '#8fbf6a', border: '#5f7a3a', bg: 'rgba(120,160,80,.18)', fg: '#dbe7b8' }
+      : { text: problems.length + (problems.length === 1 ? ' error' : ' errors'), dot: '#d98a5a', border: '#9c5a34', bg: 'rgba(180,90,50,.18)', fg: '#eec6a6' };
+
+    const activeBg = '#e0d3b0', activeBorder = '#8b2b2b';
+    const manifestNode = st.view === 'manifest'
+      ? { bg: activeBg, border: activeBorder, fg: '#5c1f1f', weight: '600' }
+      : { bg: 'transparent', border: '#d2c199', fg: '#5c4a2c', weight: '400' };
+
+    const treeDirs = st.dirs.map(d => ({
+      key: d.id, path: d.path, namespace: d.namespace,
+      onSelect: () => this.setState({ view: 'manifest' }),
+      onAddTable: () => this.addTable(d.id),
+      tables: st.tables.filter(t => t.dirId === d.id).map(t => {
+        const active = st.view === 'table' && t.uid === st.selUid;
+        return {
+          key: t.uid, name: t.name, typeShort: t.type === 'compound' ? 'cmp' : 'smp',
+          onSelect: () => this.setState({ view: 'table', selUid: t.uid, rollLines: null }),
+          bg: active ? activeBg : 'transparent', accent: active ? '#8b2b2b' : 'transparent',
+          fg: active ? '#5c1f1f' : '#5c4a2c', weight: active ? '600' : '400',
+          badgeBg: t.type === 'compound' ? '#e2d3ea' : '#e7ead6', badgeFg: t.type === 'compound' ? '#6a4a86' : '#4f5d38',
+        };
+      }),
+    }));
+
+    const mfNsErr = this.nsError(st.manifest.namespace);
+    const mfDirs = st.dirs.map(d => ({
+      key: d.id, path: d.path, namespace: d.namespace,
+      nsBorder: this.nsError(d.namespace) ? '#b05a5a' : '#c8b28a',
+      onPath: e => this.patchDir(d.id, { path: e.target.value }),
+      onNs: e => this.patchDir(d.id, { namespace: e.target.value }),
+      onDel: () => this.delDir(d.id),
+    }));
+
+    const out = {
+      manifest: st.manifest,
+      status,
+      manifestNode,
+      treeDirs,
+      mfDirs,
+      mfNsBorder: mfNsErr ? '#b05a5a' : '#c8b28a',
+      onSelectManifest: () => this.setState({ view: 'manifest' }),
+      onAddDir: () => this.addDir(),
+      onExportZip: () => this.exportZip(),
+      onMfName: e => this.patchManifest({ name: e.target.value }),
+      onMfVersion: e => this.patchManifest({ version: e.target.value }),
+      onMfNamespace: e => this.patchManifest({ namespace: e.target.value }),
+      onMfAuthor: e => this.patchManifest({ author: e.target.value }),
+      onMfMtv: e => this.patchManifest({ minToolVersion: e.target.value }),
+      isEmpty: st.view === 'empty' || (st.view === 'table' && !cur),
+      isManifest: st.view === 'manifest',
+      isTable: st.view === 'table' && !!cur,
+      valid,
+      problems: problems.map((p, i) => ({ key: i, msg: p.msg, color: p.level === 'error' ? '#a11f1f' : '#9c6a2f', icon: p.level === 'error' ? '✕' : '!' })),
+      yamlTitle: st.view === 'manifest' ? 'MANIFEST.YAML' : (cur ? cur.stem + '.YAML' : 'YAML'),
+      yamlText: this.currentYaml(),
+      copyLabel: st.copyLabel,
+      onCopy: () => this.copyCurrent(),
+      onDownload: () => this.downloadCurrent(),
+      onRoll: () => this.doRoll(),
+      noRoll: !st.rollLines,
+      rollLines: (st.rollLines || []).map((l, i) => ({ key: i, label: l.label, pad: l.indent * 18, color: l.err ? '#a11f1f' : (l.indent === 0 ? '#3a2f1c' : '#6b5535') })),
+    };
+
+    if (out.isTable) {
+      const di = this.diceInfo(cur.roll);
+      let rollInfo, rollInfoColor, rollBorder;
+      if (cur.type === 'compound') { rollInfo = ''; rollInfoColor = '#8a744c'; rollBorder = '#c8b28a'; }
+      else if (di.ok) {
+        rollInfo = di.kind === 'd66' ? 'D66 · 36 outcomes (11–66)' : 'range ' + di.min + '–' + di.max + ' · ' + di.values.length + ' outcome' + (di.values.length === 1 ? '' : 's');
+        rollInfoColor = '#4f5d38'; rollBorder = '#c8b28a';
+      } else { rollInfo = 'unparseable dice expression'; rollInfoColor = '#a11f1f'; rollBorder = '#b05a5a'; }
+
+      let effSpan = '';
+      if (cur.modOn && di.ok) effSpan = (di.min + this.intOr(cur.modMin, 0)) + '–' + (di.max + this.intOr(cur.modMax, 0));
+
+      out.current = {
+        stem: cur.stem, name: cur.name, fqid: this.fqid(cur),
+        tagsStr: (cur.tags || []).join(', '),
+        roll: cur.roll, rollInfo, rollInfoColor, rollBorder,
+        isSimple: cur.type === 'simple', isCompound: cur.type === 'compound',
+        simpleBg: cur.type === 'simple' ? '#8b2b2b' : '#f2ead6', simpleFg: cur.type === 'simple' ? '#f4e3c8' : '#7a6033',
+        compoundBg: cur.type === 'compound' ? '#8b2b2b' : '#f2ead6', compoundFg: cur.type === 'compound' ? '#f4e3c8' : '#7a6033',
+        modOn: cur.modOn, modMin: cur.modMin, modMax: cur.modMax, effSpan,
+        notesStr: (cur.notes || []).join('\n'),
+        onName: e => this.patchTable(cur.uid, { name: e.target.value }),
+        onStem: e => this.patchTable(cur.uid, { stem: e.target.value.replace(/\s+/g, '-') }),
+        onTags: e => this.patchTable(cur.uid, { tags: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }),
+        onRoll: e => this.patchTable(cur.uid, { roll: e.target.value }),
+        onTypeSimple: () => this.setType(cur.uid, 'simple'),
+        onTypeCompound: () => this.setType(cur.uid, 'compound'),
+        onDelete: () => this.delTable(cur.uid),
+        onModToggle: e => this.patchTable(cur.uid, { modOn: e.target.checked }),
+        onModMin: e => this.patchTable(cur.uid, { modMin: e.target.value }),
+        onModMax: e => this.patchTable(cur.uid, { modMax: e.target.value }),
+        onNotes: e => this.patchTable(cur.uid, { notes: e.target.value.split('\n') }),
+        onAutoRange: () => this.autoRange(cur.uid),
+        onAddResult: () => this.addResult(cur.uid),
+        onAddRef: () => this.addRef(cur.uid),
+        results: (cur.results || []).map(r => ({
+          key: r.rid, min: r.min, max: r.max, text: r.text, prob: this.probStr(di, r),
+          onMin: e => this.setResult(cur.uid, r.rid, { min: e.target.value.replace(/[^0-9-]/g, '') }),
+          onMax: e => this.setResult(cur.uid, r.rid, { max: e.target.value.replace(/[^0-9-]/g, '') }),
+          onText: e => this.setResult(cur.uid, r.rid, { text: e.target.value }),
+          onDel: () => this.delResult(cur.uid, r.rid),
+          onAddChain: () => this.addChain(cur.uid, r.rid),
+          chain: (r.chain || []).map(c => {
+            const resolved = c.ref && this.resolve(c.ref, this.nsOf(cur), map);
+            return {
+              key: c.rid, ref: c.ref, isStruct: c.struct, rerollStr: (c.reroll || []).join(', '),
+              border: c.ref && !resolved ? '#b05a5a' : '#c8b28a',
+              toggleBg: c.struct ? '#8b2b2b' : '#f2ead6', toggleFg: c.struct ? '#f4e3c8' : '#8a744c', toggleBorder: c.struct ? '#7a2323' : '#c0a76c',
+              onRef: e => this.patchChain(cur.uid, r.rid, c.rid, { ref: e.target.value }),
+              onReroll: e => this.patchChain(cur.uid, r.rid, c.rid, { reroll: e.target.value.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n)) }),
+              onToggle: () => this.patchChain(cur.uid, r.rid, c.rid, { struct: !c.struct }),
+              onDel: () => this.delChain(cur.uid, r.rid, c.rid),
+            };
+          }),
+        })),
+        compRefs: (cur.tablesRefs || []).map(r => {
+          const resolved = r.ref && this.resolve(r.ref, this.nsOf(cur), map);
+          return {
+            key: r.rid, ref: r.ref, border: r.ref && !resolved ? '#b05a5a' : '#c8b28a',
+            onRef: e => this.patchRef(cur.uid, r.rid, e.target.value),
+            onDel: () => this.delRef(cur.uid, r.rid),
+          };
+        }),
+      };
+    }
+
+    return out;
+  }
+}
+</script>
+</body>
+</html>

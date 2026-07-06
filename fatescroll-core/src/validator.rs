@@ -1,8 +1,8 @@
 // ABOUTME: Validation for tables, result entries, namespaces, and cross-references.
 // ABOUTME: Per-type checks run during load; cross-ref checks run after registry is populated.
 
-use crate::error::ValidationError;
-use crate::models::{ResultEntry, Table};
+use crate::error::{Error, ValidationError};
+use crate::models::{ModifierRange, ResultEntry, Table};
 use crate::registry::Registry;
 use regex::Regex;
 use std::collections::HashSet;
@@ -29,6 +29,109 @@ fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
         return Err(width);
     }
     Ok((min as i32, max as i32))
+}
+
+/// Why a roll expression's outcome envelope couldn't be computed.
+#[derive(Debug)]
+pub enum EnvelopeError {
+    /// The modifier range has `min > max`.
+    ModifierReversed { min: i32, max: i32 },
+    /// The dice expression failed to parse, is analytically unsupported
+    /// (modifier path), or failed to simulate (no-modifier path).
+    Dice(Error),
+    /// The simulated envelope includes negative values.
+    NegativeValues { min: i64, max: i64 },
+    /// The envelope is wider than `max` or overflows i32.
+    TooWide { width: i64, max: i64 },
+}
+
+/// Contiguous outcome envelope `[min, max]` for a non-digit-dice roll,
+/// optionally shifted by a modifier range. Analytic ([`crate::dice::dice_range`])
+/// when a modifier is present; seeded simulation otherwise. Shared by
+/// [`validate_table`] and autofill so they can never disagree on which
+/// envelopes are valid. Digit dice (D66, ...) are the caller's concern.
+pub fn outcome_envelope(
+    roll: &str,
+    modifier_range: Option<ModifierRange>,
+) -> Result<(i32, i32), EnvelopeError> {
+    let (env_min, env_max) = match modifier_range {
+        Some(mr) => {
+            if mr.min > mr.max {
+                return Err(EnvelopeError::ModifierReversed {
+                    min: mr.min,
+                    max: mr.max,
+                });
+            }
+            let (d_min, d_max) = crate::dice::dice_range(roll).map_err(EnvelopeError::Dice)?;
+            (d_min as i64 + mr.min as i64, d_max as i64 + mr.max as i64)
+        }
+        None => {
+            let sim = diceman::simulate_seeded(roll, 100_000, 42)
+                .map_err(|e| EnvelopeError::Dice(e.into()))?;
+            if sim.min < 0 || sim.max < 0 {
+                return Err(EnvelopeError::NegativeValues {
+                    min: sim.min,
+                    max: sim.max,
+                });
+            }
+            (sim.min, sim.max)
+        }
+    };
+    bounded_envelope(env_min, env_max).map_err(|width| EnvelopeError::TooWide {
+        width,
+        max: MAX_ENVELOPE_WIDTH,
+    })
+}
+
+/// Map an [`EnvelopeError`] to the [`ValidationError`] `validate_table`
+/// reports for it. `has_modifier` selects between the modifier-path and
+/// dice-path variants (too-wide, dice-failure wording).
+fn envelope_error_to_validation(
+    err: EnvelopeError,
+    table: &str,
+    expr: &str,
+    has_modifier: bool,
+) -> ValidationError {
+    match err {
+        EnvelopeError::ModifierReversed { min, max } => ValidationError::ModifierRangeReversed {
+            table: table.to_string(),
+            min,
+            max,
+        },
+        EnvelopeError::Dice(e) => match e {
+            Error::Validation(v) => v,
+            Error::Dice(d) if !has_modifier => ValidationError::InvalidDiceExpression {
+                table: table.to_string(),
+                expr: expr.to_string(),
+                reason: d.to_string(),
+            },
+            other => ValidationError::InvalidDiceExpression {
+                table: table.to_string(),
+                expr: expr.to_string(),
+                reason: other.to_string(),
+            },
+        },
+        EnvelopeError::NegativeValues { min, max } => ValidationError::InvalidDiceExpression {
+            table: table.to_string(),
+            expr: expr.to_string(),
+            reason: format!("dice range [{min}, {max}] includes negative values"),
+        },
+        EnvelopeError::TooWide { width, max } => {
+            if has_modifier {
+                ValidationError::ModifierRangeTooWide {
+                    table: table.to_string(),
+                    width,
+                    max,
+                }
+            } else {
+                ValidationError::DiceRangeTooWide {
+                    table: table.to_string(),
+                    width,
+                    max,
+                }
+            }
+        }
+    }
 }
 
 pub fn validate_namespace(namespace: &str) -> Result<(), ValidationError> {
@@ -97,66 +200,10 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                 return validate_digit_dice_coverage(name, roll, results, sides, count);
             }
 
-            let (envelope_min, envelope_max) = match modifier_range {
-                Some(mr) => {
-                    if mr.min > mr.max {
-                        return Err(ValidationError::ModifierRangeReversed {
-                            table: name.clone(),
-                            min: mr.min,
-                            max: mr.max,
-                        });
-                    }
-                    let (d_min, d_max) = crate::dice::dice_range(roll).map_err(|e| match e {
-                        crate::error::Error::Validation(v) => v,
-                        other => ValidationError::InvalidDiceExpression {
-                            table: name.clone(),
-                            expr: roll.clone(),
-                            reason: other.to_string(),
-                        },
-                    })?;
-                    let env_min = d_min as i64 + mr.min as i64;
-                    let env_max = d_max as i64 + mr.max as i64;
-                    match bounded_envelope(env_min, env_max) {
-                        Ok(pair) => pair,
-                        Err(width) => {
-                            return Err(ValidationError::ModifierRangeTooWide {
-                                table: name.clone(),
-                                width,
-                                max: MAX_ENVELOPE_WIDTH,
-                            });
-                        }
-                    }
-                }
-                None => {
-                    let sim = diceman::simulate_seeded(roll, 100_000, 42).map_err(|e| {
-                        ValidationError::InvalidDiceExpression {
-                            table: name.clone(),
-                            expr: roll.clone(),
-                            reason: e.to_string(),
-                        }
-                    })?;
-                    if sim.min < 0 || sim.max < 0 {
-                        return Err(ValidationError::InvalidDiceExpression {
-                            table: name.clone(),
-                            expr: roll.clone(),
-                            reason: format!(
-                                "dice range [{}, {}] includes negative values",
-                                sim.min, sim.max
-                            ),
-                        });
-                    }
-                    match bounded_envelope(sim.min, sim.max) {
-                        Ok(pair) => pair,
-                        Err(width) => {
-                            return Err(ValidationError::DiceRangeTooWide {
-                                table: name.clone(),
-                                width,
-                                max: MAX_ENVELOPE_WIDTH,
-                            });
-                        }
-                    }
-                }
-            };
+            let (envelope_min, envelope_max) =
+                outcome_envelope(roll, *modifier_range).map_err(|e| {
+                    envelope_error_to_validation(e, name, roll, modifier_range.is_some())
+                })?;
             validate_envelope_coverage(name, envelope_min, envelope_max, results)
         }
         Table::Compound { .. } => {
@@ -347,6 +394,34 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
 mod tests {
     use super::*;
     use crate::models::{ChainRef, ResultEntry, Table};
+
+    #[test]
+    fn outcome_envelope_modifier_shifts_analytic_range() {
+        let mr = ModifierRange { min: 0, max: 6 };
+        assert_eq!(outcome_envelope("1d8", Some(mr)).unwrap(), (1, 14));
+    }
+
+    #[test]
+    fn outcome_envelope_rejects_reversed_modifier() {
+        let mr = ModifierRange { min: 5, max: 0 };
+        assert!(matches!(
+            outcome_envelope("1d8", Some(mr)),
+            Err(EnvelopeError::ModifierReversed { min: 5, max: 0 })
+        ));
+    }
+
+    #[test]
+    fn outcome_envelope_simulates_without_modifier() {
+        assert_eq!(outcome_envelope("2d6", None).unwrap(), (2, 12));
+    }
+
+    #[test]
+    fn outcome_envelope_rejects_negative_simulated_range() {
+        assert!(matches!(
+            outcome_envelope("1d6 - 3", None),
+            Err(EnvelopeError::NegativeValues { .. })
+        ));
+    }
 
     #[test]
     fn valid_namespace_single_segment() {
