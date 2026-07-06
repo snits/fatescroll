@@ -40,11 +40,15 @@ function mapResult(r: ParsedResult): ResultDraft {
 function mapTable(f: ParsedFile, dirs: Dir[]): TableDraft {
   const parent = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
   const dir = dirs.find((d) => normPath(d.path) === parent && d.namespace === f.namespace);
+  // parse_collection only emits tables discovered under a manifest directory
+  // entry, so a miss here means the contract has drifted — fail loud instead
+  // of silently orphaning the table (emit's collectionFiles would drop it).
+  if (!dir) throw new Error(`table "${f.path}" does not match any manifest directory`);
   const t = f.table;
   const mod = t.modifier_range ?? null;
   return {
     uid: uid(),
-    dirId: dir?.id ?? '',
+    dirId: dir.id,
     stem: f.stem,
     name: t.name,
     type: t.type,
