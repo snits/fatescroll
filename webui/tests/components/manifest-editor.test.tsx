@@ -259,6 +259,7 @@ function makeFakeEngine(errors: string[]): Engine {
     expectedValues: () => null,
     histogram: () => null,
     roll: () => ({ error: 'not used' }),
+    parseCollection: () => ({ ok: false, errors: ['not used'] }),
   };
 }
 

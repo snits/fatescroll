@@ -19,12 +19,69 @@ export interface RollNode {
   children: RollNode[];
 }
 
+export interface ImportFile {
+  path: string;
+  contents: string;
+}
+
+export interface ParsedChainModified {
+  table: string;
+  reroll: number[];
+}
+export type ParsedChain = string | ParsedChainModified;
+
+export interface ParsedResult {
+  min: number;
+  max: number;
+  text: string | null;
+  chain: ParsedChain[] | null;
+}
+
+export interface ParsedTable {
+  type: 'simple' | 'compound';
+  id: string;
+  name: string;
+  tags: string[];
+  notes: string[];
+  roll?: string;
+  modifier_range?: [number, number] | null;
+  results?: ParsedResult[];
+  tables?: string[];
+}
+
+export interface ParsedFile {
+  path: string;
+  namespace: string;
+  stem: string;
+  table: ParsedTable;
+}
+
+export interface ParsedManifest {
+  name: string;
+  version: string;
+  namespace: string;
+  author: string | null;
+  min_tool_version: string | null;
+  directories: { path: string; namespace: string }[];
+}
+
+export interface ParsedCollection {
+  manifest: ParsedManifest;
+  tables: ParsedFile[];
+  ignoredYaml: string[];
+}
+
+export type ParseOutcome =
+  | { ok: true; collection: ParsedCollection }
+  | { ok: false; errors: string[] };
+
 export interface Engine {
   validate(manifestYaml: string, files: FileInput[]): string[];
   diceInfo(expr: string): DiceInfo;
   expectedValues(expr: string, modOn: boolean, modMin: number, modMax: number): number[] | null;
   histogram(expr: string): [value: number, probability: number][] | null;
   roll(manifestYaml: string, files: FileInput[], fqid: string): RollNode | { error: string };
+  parseCollection(manifestYaml: string, files: ImportFile[]): ParseOutcome;
 }
 
 /** The raw fatescroll-wasm module surface: string-in/string-out JSON envelopes. */
@@ -34,6 +91,7 @@ export interface RawEngine {
   expected_values(expr: string, modOn: boolean, modMin: number, modMax: number): string;
   histogram(expr: string): string;
   roll_collection(manifestYaml: string, filesJson: string, fqid: string, seed: bigint): string;
+  parse_collection(manifestYaml: string, filesJson: string): string;
 }
 
 function nextSeed(): bigint {
@@ -94,6 +152,21 @@ export function wrapEngine(raw: RawEngine): Engine {
         | RollNode
         | { error: string };
       return parsed;
+    },
+
+    parseCollection(manifestYaml, files) {
+      const parsed = JSON.parse(raw.parse_collection(manifestYaml, JSON.stringify(files))) as
+        | { errors: string[] }
+        | { manifest: ParsedManifest; tables: ParsedFile[]; ignored_yaml: string[] };
+      if ('errors' in parsed) return { ok: false, errors: parsed.errors };
+      return {
+        ok: true,
+        collection: {
+          manifest: parsed.manifest,
+          tables: parsed.tables,
+          ignoredYaml: parsed.ignored_yaml,
+        },
+      };
     },
   };
 }
