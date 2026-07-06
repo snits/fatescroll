@@ -871,3 +871,186 @@
 .compound-editor-remove:hover {
   background: var(--err-bg);
 }
+
+/* Right pane */
+
+.right-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 18px 20px;
+  gap: 16px;
+}
+
+.yaml-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
+.yaml-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yaml-viewer-title {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--heading-accent);
+}
+
+.yaml-viewer-copy,
+.yaml-viewer-download {
+  cursor: pointer;
+  padding: 5px 10px;
+  border: 1px solid var(--border-btn);
+  border-radius: 3px;
+  background: var(--bg-btn);
+  color: var(--heading-accent);
+  font-size: 11px;
+}
+
+.yaml-viewer-copy:hover,
+.yaml-viewer-download:hover {
+  background: var(--hover-btn);
+}
+
+.yaml-viewer-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--yaml-bg);
+  border: 1px solid var(--yaml-border);
+  border-radius: 4px;
+}
+
+.yaml-viewer-pre {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--yaml-fg);
+  white-space: pre;
+}
+
+.validation-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  max-height: 34%;
+  min-height: 0;
+  gap: 6px;
+  overflow: auto;
+}
+
+.validation-panel-header {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  color: var(--heading-accent);
+}
+
+.validation-panel-subtitle {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: -4px;
+}
+
+.validation-panel-ok {
+  font-size: 13px;
+  color: var(--olive);
+}
+
+.validation-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.validation-panel-item {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--err);
+}
+
+.dice-roller {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.dice-roller-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dice-roller-label {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1.5px;
+  color: var(--heading-accent);
+}
+
+.dice-roller-btn {
+  cursor: pointer;
+  padding: 7px 16px;
+  border: 1px solid var(--ox-border);
+  border-radius: 3px;
+  background: var(--ox);
+  color: var(--ox-on);
+  font-size: 13px;
+}
+
+.dice-roller-btn:hover:not(:disabled) {
+  background: var(--ox-hover);
+}
+
+.dice-roller-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dice-roller-output {
+  padding: 10px 12px;
+  border: 1px solid var(--border-card);
+  border-radius: 3px;
+  background: var(--bg-card);
+  min-height: 60px;
+  overflow: auto;
+}
+
+.dice-roller-placeholder {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.dice-roller-line {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dice-roller-line--root {
+  color: var(--roll-line);
+}
+
+.dice-roller-line--nested {
+  color: var(--roll-line-nested);
+}
+
+.dice-roller-line--error {
+  color: var(--err);
+}

@@ -26,6 +26,7 @@ body { margin: 0; }
   --status-bad-bg: rgba(180, 90, 50, 0.18);            --status-bad-fg: #eec6a6;
   --yaml-bg: #241d12;        --yaml-border: #2f2718;   --yaml-fg: #d9c99a;
   --chain-border: #c3a86e;
+  --roll-line: #3a2f1c;      --roll-line-nested: #6b5535;
   --font-display: 'IM Fell English SC', serif;
   --font-body: 'Spectral', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
