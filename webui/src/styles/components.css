@@ -24,7 +24,7 @@
 .header-divider {
   width: 1px;
   height: 34px;
-  background: #6a5834;
+  background: var(--header-divider);
 }
 
 .header-collection {
@@ -37,12 +37,12 @@
   font-size: 11px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: #9c855c;
+  color: var(--header-label);
 }
 
 .header-collection-name {
   font-size: 16px;
-  color: #f0e6c8;
+  color: var(--header-value);
 }
 
 .header-spacer {
@@ -150,6 +150,7 @@
   border: 1px solid var(--border-tree-idle);
   background: transparent;
   font: inherit;
+  color: inherit;
   text-align: left;
   cursor: pointer;
 }
@@ -300,6 +301,34 @@
 
 .tree-add-dir:hover {
   background: var(--hover-row);
+}
+
+/* Empty state */
+
+.empty-state {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty-state-glyph {
+  font-size: 40px;
+  opacity: 0.5;
+}
+
+.empty-state-title {
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+
+.empty-state-helper {
+  font-size: 14px;
+  max-width: 320px;
 }
 
 /* Manifest editor */
@@ -628,7 +657,7 @@
 }
 
 .table-editor-autofill-btn:hover:not(:disabled) {
-  background: #e3e6cf;
+  background: var(--olive-bg-hover);
 }
 
 .table-editor-autofill-btn:disabled {

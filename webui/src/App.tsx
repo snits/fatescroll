@@ -1,5 +1,6 @@
 import { EngineProvider, useDerived } from './engine/useEngine';
 import { useForgeStore } from './model/store';
+import { EmptyState } from './components/EmptyState';
 import { HeaderBar } from './components/HeaderBar';
 import { ManifestEditor } from './components/ManifestEditor';
 import { RightPane } from './components/RightPane';
@@ -17,6 +18,7 @@ export function AppContent() {
       <div className="app-body">
         <Scriptorium />
         <div className="pane-center">
+          {view === 'empty' && <EmptyState />}
           {view === 'manifest' && <ManifestEditor />}
           {view === 'table' && <TableEditor />}
         </div>
