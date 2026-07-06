@@ -41,7 +41,7 @@ export interface TableDraft {
   modOn: boolean;
   modMin: string;
   modMax: string; // simple only
-  notes: string[]; // simple only
+  notes: string[];
   results: ResultDraft[]; // simple only
   tableRefs: { rid: string; ref: string }[]; // compound only
 }
