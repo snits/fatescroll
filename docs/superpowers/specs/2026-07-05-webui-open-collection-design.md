@@ -38,10 +38,11 @@ localStorage autosave.
   manifest view.
 - On failure, show the full error list; editor state is untouched.
 
-## 2. Ingest and Discovery (TypeScript)
+## 2. Ingest (TypeScript)
 
-Both inputs normalize to `{ manifestYaml, files: [{path, contents}] }`
-with paths relative to the manifest's directory.
+Both inputs normalize to a flat list of YAML entries
+`[{path, contents}]` plus the manifest's YAML, with paths relative to
+the manifest's directory.
 
 **Zip:** decode with `fflate.unzipSync`. Accept `manifest.yaml` at the
 archive root or inside exactly one top-level directory (the layout
@@ -51,34 +52,38 @@ candidate manifests — is an error.
 **Folder:** read `File.webkitRelativePath`, strip the picked folder's
 name, require `manifest.yaml` at the folder root.
 
-**Discovery** mirrors `fatescroll-core/src/collection.rs` exactly:
+Only `.yaml`/`.yml` entries are read; everything else is ignored.
 
-- For each manifest `directories:` entry, take files *directly* in that
-  directory (non-recursive — `kal-arath` lists `core/` and
-  `core/weather` as separate entries for this reason).
-- Match `.yaml` / `.yml` extensions only.
-- Skip `manifest.yaml` and `*.manifest.yaml`.
-
-YAML files present in the input but not matched by discovery are
-reported as a **warning** (they would not survive re-export) but do not
-block the open. This matches CLI semantics: the CLI never loads them
-either.
-
-## 3. Parsing (new wasm function)
+## 3. Parsing and Discovery (new wasm function)
 
 ```rust
 pub fn parse_collection(manifest_yaml: &str, files_json: &str) -> String
 ```
 
-- Parses the manifest and each file's table using fatescroll-core's
-  serde models, reusing the loader's rules: `id` must match the filename
-  stem; an absent `id` derives from the stem.
+Takes ALL ingested files; discovery happens here, in Rust, next to the
+core semantics it mirrors — not in TypeScript.
+
+- **Discovery** mirrors `fatescroll-core/src/collection.rs` exactly:
+  for each manifest `directories:` entry, take files *directly* in that
+  directory (non-recursive — `kal-arath` lists `core/` and
+  `core/weather` as separate entries for this reason); match `.yaml` /
+  `.yml` only; skip `manifest.yaml` and `*.manifest.yaml`.
+- Parses the manifest and each discovered table using fatescroll-core's
+  serde models. Core requires `id` in table YAML (a missing `id` is a
+  parse error, exactly as in `build_registry`) and `id` must match the
+  filename stem (mirrors `IdFilenameMismatch`).
+- Does **not** run `validate_table`: a table with a range gap or bad
+  dice expression parses and is fully representable — the editor and
+  its live ValidationPanel are where such problems get fixed. The
+  all-or-nothing rule applies to parse/structure errors only.
 - Rejects manifests with `files:` entries with a clear message
   ("not supported by Table Forge").
-- Returns JSON: parsed manifest plus per-file parsed tables on success,
-  or a list of per-file errors. `Manifest`/`DirectoryEntry` need
-  `Serialize` derives (or a hand-built JSON view) — they are currently
-  `Deserialize`-only.
+- Returns JSON: parsed manifest, per-file parsed tables, and an
+  `ignored_yaml` list (YAML files not matched by discovery — they would
+  not survive re-export, surfaced as a warning; the CLI never loads
+  them either), or `{"errors": [...]}`. The manifest JSON view is
+  hand-built with `serde_json::json!` — `Manifest`/`DirectoryEntry` are
+  `Deserialize`-only and stay that way.
 - **All-or-nothing** is enforced by the caller: any error in the result
   aborts the open.
 
@@ -105,12 +110,12 @@ data on an open → edit → export round-trip. Fix before building import.
 
 ## 6. Testing (TDD throughout)
 
-- **Rust:** unit tests for `parse_collection` covering the valid
-  fixture (`tests/fixtures/valid-collection`), id/stem mismatch, absent
-  id, `files:` rejection, per-file error accumulation.
-- **Vitest:** ingest normalization (zip layouts, folder paths),
-  discovery (non-recursive, extension filter, manifest skip, warning
-  list), draft mapping.
+- **Rust:** unit tests for `parse_collection` covering discovery
+  (non-recursive, extension filter, manifest skip, ignored list),
+  id/stem mismatch, absent id, `files:` rejection, per-file error
+  accumulation.
+- **Vitest:** ingest normalization (zip layouts, folder paths), draft
+  mapping, store action, HeaderBar open flow.
 - **Round-trip properties:**
   - import → re-export reproduces the collection (via the existing
     golden-test setup);
