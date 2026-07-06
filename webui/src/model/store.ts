@@ -30,6 +30,7 @@ export interface ForgeState extends ForgeData {
   addTable(dirId: string): void;
   updateTable(uid: string, patch: Partial<Omit<TableDraft, 'uid'>>): void;
   deleteTable(uid: string): void;
+  loadCollection(data: { manifest: ManifestState; dirs: Dir[]; tables: TableDraft[] }): void;
   setRollLines(lines: RollLine[] | null): void;
 }
 
@@ -163,6 +164,9 @@ export const useForgeStore = create<ForgeState>()((set) => ({
         view: (nextUid ? 'table' : 'empty') as View,
       });
     }),
+
+  loadCollection: (data) =>
+    set({ ...data, view: 'manifest', selUid: null, rollLines: null }),
 
   setRollLines: (lines) => set({ rollLines: lines }),
 }));
