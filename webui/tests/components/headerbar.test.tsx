@@ -226,6 +226,24 @@ describe('open collection', () => {
     expect(useForgeStore.getState().view).toBe('manifest');
   });
 
+  it('alerts and leaves state untouched when the picked zip is unreadable', async () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const parseCollection = vi.fn();
+    const engine = { ...makeFakeEngine([]), parseCollection };
+    render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
+      wrapper: wrapper(engine),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open collection/i }));
+    fireEvent.change(screen.getByTestId('open-zip-input'), {
+      target: { files: [new File([new Uint8Array([1, 2, 3, 4])], 'bad.zip')] },
+    });
+
+    await waitFor(() => expect(alert).toHaveBeenCalled());
+    expect(parseCollection).not.toHaveBeenCalled();
+    expect(useForgeStore.getState().manifest.name).toBe('New Collection');
+  });
+
   it('shows parse errors and leaves state untouched', async () => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const engine = {
