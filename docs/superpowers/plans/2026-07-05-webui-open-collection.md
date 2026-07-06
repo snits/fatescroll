@@ -678,6 +678,26 @@ describe('entriesFromZip', () => {
   });
 });
 
+describe('entriesFromFileList', () => {
+  function fakeFile(rel: string, contents: string): File {
+    const f = new File([contents], rel.slice(rel.lastIndexOf('/') + 1));
+    Object.defineProperty(f, 'webkitRelativePath', { value: rel });
+    return f;
+  }
+
+  it('strips the picked folder name and reads only yaml files', async () => {
+    const list = [
+      fakeFile('kal/manifest.yaml', 'name: K'),
+      fakeFile('kal/core/oracle.yaml', 'id: oracle'),
+      fakeFile('kal/readme.txt', 'nope'),
+    ] as unknown as FileList;
+    expect(await entriesFromFileList(list)).toEqual([
+      { path: 'manifest.yaml', contents: 'name: K' },
+      { path: 'core/oracle.yaml', contents: 'id: oracle' },
+    ]);
+  });
+});
+
 describe('isYamlPath', () => {
   it('accepts .yaml and .yml, rejects others', () => {
     expect(isYamlPath('a/b.yaml')).toBe(true);
@@ -686,6 +706,9 @@ describe('isYamlPath', () => {
   });
 });
 ```
+
+(Import `entriesFromFileList` alongside the other ingest imports. This test
+needs jsdom — the file must NOT carry a `@vitest-environment node` comment.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -945,7 +968,11 @@ export interface LoadedState {
   tables: TableDraft[];
 }
 
-const normPath = (p: string) => p.replace(/\/+$/, '');
+// Mirrors normalize_dir in fatescroll-wasm: "core/" -> "core", "." -> "".
+const normPath = (p: string) => {
+  const trimmed = p.replace(/\/+$/, '');
+  return trimmed === '.' ? '' : trimmed;
+};
 
 function mapChain(c: ParsedChain): ChainDraft {
   if (typeof c === 'string') return { rid: uid(), struct: false, ref: c, reroll: [] };
@@ -1112,11 +1139,23 @@ git commit -s -m "feat(webui): loadCollection store action"
 - Modify: `webui/src/styles/components.css` (open-menu styles)
 - Test: `webui/tests/components/headerbar.test.tsx`
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Wrap existing bare HeaderBar renders in an EngineProvider**
 
-Add to `webui/tests/components/headerbar.test.tsx`. The existing file already
-renders `HeaderBar` inside an `EngineProvider` with a fake engine — follow
-its helpers. New tests:
+The first `describe('HeaderBar')` block in
+`webui/tests/components/headerbar.test.tsx` renders `<HeaderBar />` bare
+(~8 tests); only the later `AppContent wiring` block uses the `wrapper()`
+helper. This task adds `useEngine()` to HeaderBar, which throws without an
+`EngineProvider` ancestor — so those bare renders must be wrapped first.
+Hoist the `wrapper`/`makeFakeEngine` helpers above the HeaderBar describe
+block and pass `{ wrapper: wrapper(makeFakeEngine([])) }` to each bare
+`render(...)` call (the existing helper signature is
+`makeFakeEngine(errors: string[])`). Run the file's tests — they still pass
+before HeaderBar changes.
+
+- [ ] **Step 2: Write the failing tests**
+
+Add to `webui/tests/components/headerbar.test.tsx`, following the file's
+helpers. New tests:
 
 ```ts
 describe('open collection', () => {
@@ -1150,7 +1189,7 @@ describe('open collection', () => {
 
   it('opens a zip: ingests entries, parses via engine, loads the store', async () => {
     const parseCollection = vi.fn().mockReturnValue(parsedOutcome);
-    const engine = { ...makeFakeEngine(), parseCollection };
+    const engine = { ...makeFakeEngine([]), parseCollection };
     render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
       wrapper: wrapper(engine),
     });
@@ -1179,7 +1218,7 @@ describe('open collection', () => {
   it('shows parse errors and leaves state untouched', async () => {
     const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
     const engine = {
-      ...makeFakeEngine(),
+      ...makeFakeEngine([]),
       parseCollection: () => ({ ok: false as const, errors: ['core/bad.yaml: mapping error'] }),
     };
     render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
@@ -1201,7 +1240,7 @@ describe('open collection', () => {
     useForgeStore.getState().addDir();
     useForgeStore.getState().addTable(useForgeStore.getState().dirs[0].id);
     const parseCollection = vi.fn().mockReturnValue(parsedOutcome);
-    const engine = { ...makeFakeEngine(), parseCollection };
+    const engine = { ...makeFakeEngine([]), parseCollection };
     render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
       wrapper: wrapper(engine),
     });
@@ -1225,12 +1264,12 @@ useForgeStore` from `../../src/model/store` (some already present).
 Note: jsdom's `File` supports `.arrayBuffer()`; the `fireEvent.change`
 pattern with `target.files` is standard for file inputs.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 3: Run tests to verify they fail**
 
 Run: `cd webui && npx vitest run tests/components/headerbar.test.tsx`
 Expected: FAIL — no "open collection" button.
 
-- [ ] **Step 3: Implement the Open control**
+- [ ] **Step 4: Implement the Open control**
 
 Rewrite `webui/src/components/HeaderBar.tsx` additions (keep everything
 existing; new imports, state, handlers, and markup):
@@ -1331,14 +1370,12 @@ Markup, before the export button:
           type="file"
           hidden
           onChange={handleFolderPicked}
-          // React 19 passes unknown lowercase attributes through to the DOM
           webkitdirectory=""
         />
       </div>
 ```
 
-If TypeScript rejects `webkitdirectory`, spread it:
-`{...({ webkitdirectory: '' } as Record<string, string>)}`.
+(`webkitdirectory=""` renders and typechecks clean under React 19 + TS 6.)
 
 Add to `webui/src/styles/components.css`, near the header styles (match the
 file's existing formatting and color values — reuse the export button's
@@ -1374,17 +1411,17 @@ palette):
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 5: Run tests to verify they pass**
 
 Run: `cd webui && npx vitest run tests/components/headerbar.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Full suite + lint**
+- [ ] **Step 6: Full suite + lint**
 
 Run: `cd webui && npm test && npm run lint`
 Expected: PASS, no lint errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add webui/src/components/HeaderBar.tsx webui/src/styles/components.css webui/tests/components/headerbar.test.tsx
@@ -1477,7 +1514,7 @@ describe('import round-trip', () => {
     tmpDirs.push(tmp);
     writeCollection(tmp, manifestYaml(manifest, dirs), collectionFiles(dirs, tables));
 
-    const result = await execa(bin, ['validate', tmp], { reject: false });
+    const result = await execa(bin, ['validate', '--collection', tmp], { reject: false });
     expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
   }, 60_000);
 
