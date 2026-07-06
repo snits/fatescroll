@@ -216,9 +216,10 @@ fn is_manifest_name(name: &str) -> bool {
 /// only, manifests skipped. Tables must carry an `id` matching the filename
 /// stem, exactly as `build_registry` enforces. Does NOT run validate_table —
 /// semantically invalid tables load fine and get fixed in the editor.
-/// Duplicate-FQID detection is not mirrored either (the editor's live
-/// validate_collection catches collisions after load). Directory paths must
-/// be plain relative segments ("core/deep"); "./core" forms won't match.
+/// Duplicate-FQID detection and namespace validation are not mirrored either
+/// (the editor's live validate_collection catches both after load).
+/// Directory paths must be plain relative segments ("core/deep"); "./core"
+/// forms won't match.
 /// Returns {"manifest": .., "tables": [{path, namespace, stem, table}],
 /// "ignored_yaml": [..]} or {"errors": [String]} (all-or-nothing).
 #[wasm_bindgen]
