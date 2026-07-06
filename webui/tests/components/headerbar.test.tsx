@@ -111,6 +111,27 @@ describe('HeaderBar', () => {
     expect(downloadedName).toBe('kal-arath-collection.zip');
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
   });
+
+  it('alerts instead of downloading when the zip build fails (duplicate table path)', () => {
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({ uid: 't1', stem: 'oracle' }),
+        makeTable({ uid: 't2', stem: 'oracle' }),
+      ],
+    });
+
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const createObjectURL = vi.fn(() => 'blob:mock');
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL: vi.fn() });
+
+    render(<HeaderBar collectionName="New Collection" errorCount={1} />);
+    fireEvent.click(screen.getByRole('button', { name: /export collection/i }));
+
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    expect(String(alertSpy.mock.calls[0][0])).toContain('core/oracle.yaml');
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
 });
 
 function makeFakeEngine(errors: string[]): Engine {

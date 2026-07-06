@@ -2,6 +2,7 @@
 // ABOUTME: validation status pill, and the collection zip export button.
 
 import { buildCollectionZip } from '../export/zip';
+import { triggerDownload } from '../logic/download';
 import { collectionSlug } from '../logic/slug';
 import { useForgeStore } from '../model/store';
 import { collectionFiles, manifestYaml } from '../yaml/emit';
@@ -20,13 +21,14 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
   function handleExport() {
     const { manifest, dirs, tables } = useForgeStore.getState();
     const slug = collectionSlug(manifest.name);
-    const zip = buildCollectionZip(slug, manifestYaml(manifest, dirs), collectionFiles(dirs, tables));
-    const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${slug}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    let zip: Uint8Array<ArrayBuffer>;
+    try {
+      zip = buildCollectionZip(slug, manifestYaml(manifest, dirs), collectionFiles(dirs, tables));
+    } catch (err) {
+      window.alert(String(err));
+      return;
+    }
+    triggerDownload(`${slug}.zip`, new Blob([zip], { type: 'application/zip' }));
   }
 
   return (
