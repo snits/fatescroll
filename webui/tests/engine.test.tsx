@@ -251,9 +251,12 @@ describe('useDerived', () => {
   it('computes the manifest derivation synchronously on first render', () => {
     const fake = makeFakeEngine();
     const { result } = renderHook(() => useDerived(), { wrapper: wrapper(fake) });
-    expect(result.current.currentTitle).toBe('MANIFEST.YAML');
     expect(result.current.errors).toEqual([]);
-    expect(result.current.currentYaml).toContain('name: New Collection');
+    expect(result.current.manifestYaml).toContain('name: New Collection');
+    // Initial view is 'empty' — nothing is selected, so the yaml pane shows
+    // the plain "YAML" title with no content, not the manifest.
+    expect(result.current.currentTitle).toBe('YAML');
+    expect(result.current.currentYaml).toBe('');
   });
 
   it('updates after a store mutation (debounced trailing edge)', async () => {
@@ -301,8 +304,7 @@ describe('useDerived', () => {
     expect(result.current.errors).toHaveLength(1);
     expect(result.current.errors[0]).toContain('engine failure');
     expect(result.current.errors[0]).toContain('wasm panicked');
-    expect(result.current.currentTitle).toBe('MANIFEST.YAML');
-    expect(result.current.currentYaml).toContain('name: New Collection');
+    expect(result.current.manifestYaml).toContain('name: New Collection');
 
     // Debounced recompute path must not freeze on stale state: once the
     // engine recovers, a store change clears the failure.

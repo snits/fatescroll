@@ -106,12 +106,22 @@ function computeDerived(
     }
   }
 
+  if (view === 'manifest') {
+    return {
+      files,
+      manifestYaml: manifestYamlText,
+      errors,
+      currentYaml: manifestYamlText,
+      currentTitle: 'MANIFEST.YAML',
+    };
+  }
+
   return {
     files,
     manifestYaml: manifestYamlText,
     errors,
-    currentYaml: manifestYamlText,
-    currentTitle: 'MANIFEST.YAML',
+    currentYaml: '',
+    currentTitle: 'YAML',
   };
 }
 
