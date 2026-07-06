@@ -97,6 +97,7 @@ describe('mapDrafts', () => {
     expect(r.text).toBe('Yes, and [1d4]');
     expect(r.chain[0]).toMatchObject({ struct: false, ref: 'plain-ref', reroll: [] });
     expect(r.chain[1]).toMatchObject({ struct: true, ref: 'oracle', reroll: [2] });
+    expect(r.chain[0].rid).not.toBe(r.chain[1].rid);
   });
 
   it('maps a compound table to tableRefs with draft defaults for simple-only fields', () => {
@@ -117,5 +118,11 @@ describe('mapDrafts', () => {
     const { tables } = mapDrafts(p);
     expect(tables[0].results[0].text).toBe('');
     expect(tables[0].results[0].chain).toEqual([]);
+  });
+
+  it('throws when a table matches no manifest directory', () => {
+    const p = parsed();
+    p.tables[0].namespace = 'kal-arath.nonexistent';
+    expect(() => mapDrafts(p)).toThrow(/does not match any manifest directory/i);
   });
 });
