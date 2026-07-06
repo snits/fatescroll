@@ -25,13 +25,10 @@ A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo t
 ### webui (Table Forge)
 
 ```bash
-cd webui
-npm run build:wasm    # build fatescroll-wasm to src/wasm/pkg/ (requires wasm-pack)
-npm test              # vitest: unit, component, and golden round-trip tests
-npm run build          # build:wasm + tsc -b + vite build
+cd webui && npm run build:wasm && npm test   # build fatescroll-wasm, then run the test suite
 ```
 
-See `webui/README.md` for setup and architecture detail.
+See `webui/README.md` for the full command list, prerequisites, and architecture.
 
 ## Architecture
 
