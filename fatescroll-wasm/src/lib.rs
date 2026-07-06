@@ -548,4 +548,76 @@ mod tests {
         assert_eq!(chain[1]["table"], "a");
         assert_eq!(chain[1]["reroll"], serde_json::json!([1]));
     }
+
+    #[test]
+    fn parse_collection_rejects_bad_manifest_yaml() {
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(": not [ yaml", "[]")).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().starts_with("manifest:"));
+    }
+
+    #[test]
+    fn parse_collection_rejects_files_entries() {
+        let manifest = "name: T\nversion: \"1.0\"\nnamespace: t\nauthor: ~\nmin_tool_version: ~\nfiles:\n  - path: a.yaml\n    namespace: t\n";
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(manifest, "[]")).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        assert!(errs[0].as_str().unwrap().contains("not supported"));
+    }
+
+    #[test]
+    fn parse_collection_rejects_malformed_files_json() {
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, "{ not json")).unwrap();
+        assert!(out["errors"][0].as_str().unwrap().starts_with("files:"));
+    }
+
+    #[test]
+    fn parse_collection_accumulates_all_errors() {
+        // All-or-nothing: one bad table plus one id mismatch plus one missing
+        // id -> three errors, no manifest/tables keys in the envelope.
+        let files = serde_json::json!([
+            {"path": "core/bad.yaml", "contents": ": not [ yaml"},
+            {"path": "core/mismatch.yaml", "contents": "id: other\nname: X\ntype: compound\ntables: []\n"},
+            {"path": "core/no-id.yaml", "contents": "name: X\ntype: compound\ntables: []\n"},
+            {"path": "core/oracle.yaml", "contents": ORACLE_YAML}
+        ])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 3, "expected 3 errors, got: {errs:?}");
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().starts_with("core/bad.yaml:"))
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().contains("does not match filename"))
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.as_str().unwrap().starts_with("core/no-id.yaml:"))
+        );
+        assert!(out.get("manifest").is_none());
+        assert!(out.get("tables").is_none());
+    }
+
+    #[test]
+    fn parse_collection_does_not_validate_tables() {
+        // A range gap is a validation error, not a parse error: the table
+        // must import so the editor can fix it (ValidationPanel shows it).
+        let files = serde_json::json!([{
+            "path": "core/gappy.yaml",
+            "contents": "id: gappy\nname: Gappy\ntype: simple\nroll: 1d6\nresults:\n  - min: 1\n    max: 2\n    text: Low\n  - min: 5\n    max: 6\n    text: High\n"
+        }])
+        .to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        assert!(out.get("errors").is_none(), "unexpected errors: {out}");
+        assert_eq!(out["tables"].as_array().unwrap().len(), 1);
+    }
 }
