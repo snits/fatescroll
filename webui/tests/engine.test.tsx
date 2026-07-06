@@ -351,7 +351,7 @@ describe('useDerived', () => {
     }
   });
 
-  it('falls back to the manifest yaml/title on the manifest view', async () => {
+  it('derives the manifest yaml/title on the manifest view', async () => {
     const fake = makeFakeEngine();
     const { result } = renderHook(() => useDerived(), { wrapper: wrapper(fake) });
 
@@ -364,6 +364,7 @@ describe('useDerived', () => {
 
     await waitFor(() => {
       expect(result.current.currentTitle).toBe('MANIFEST.YAML');
+      expect(result.current.currentYaml).toContain('name: New Collection');
     });
   });
 });
