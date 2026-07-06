@@ -18,8 +18,13 @@ function dq(s: string): string {
       .replace(/\r/g, '\\r')
       .replace(/\t/g, '\\t')
       // eslint-disable-next-line no-control-regex
-      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, (c) => {
-        return `\\u00${c.charCodeAt(0).toString(16).padStart(2, '0')}`;
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f\u2028\u2029]/g, (c) => {
+        const code = c.charCodeAt(0);
+        if (code <= 0xff) {
+          return `\\u00${code.toString(16).padStart(2, '0')}`;
+        } else {
+          return `\\u${code.toString(16).padStart(4, '0')}`;
+        }
       })
   );
 }
@@ -33,7 +38,7 @@ export function yv(s: string): string {
     /:(\s|$)/.test(s) ||
     s.includes(' #') ||
     // eslint-disable-next-line no-control-regex
-    /[\x00-\x1f]/.test(s) ||
+    /[\x00-\x1f\x7f-\x9f\u2028\u2029]/.test(s) ||
     KEYWORDS.has(s.toLowerCase()) ||
     // Full-string numeric lookalikes only: YAML resolves a plain scalar to a
     // number only when the whole scalar parses as one, so dice expressions

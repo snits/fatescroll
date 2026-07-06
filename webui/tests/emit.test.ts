@@ -384,6 +384,14 @@ describe('yv', () => {
   it('escapes control chars beyond newline/tab/CR as \\u00XX', () => {
     expect(yv('a\x0bb')).toBe('"a\\u000bb"');
   });
+
+  it('escapes DEL/C1 controls and LS/PS line separators correctly', () => {
+    expect(yv('a\x7fb')).toBe('"a\\u007fb"');
+    expect(yv('a\x80b')).toBe('"a\\u0080b"');
+    expect(yv('a\x9fb')).toBe('"a\\u009fb"');
+    expect(yv('a\u2028b')).toBe('"a\\u2028b"');
+    expect(yv('a\u2029b')).toBe('"a\\u2029b"');
+  });
 });
 
 describe('numOr0', () => {
