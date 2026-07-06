@@ -1,12 +1,14 @@
 // ABOUTME: Right-pane YAML viewer: dark <pre> panel for the current view's
 // ABOUTME: emitted YAML, plus copy-to-clipboard and download-as-file buttons.
+// ABOUTME: Contract: copy writes the (debounced) yaml prop — exactly what's on
+// ABOUTME: screen; download re-emits fresh from the store at click time.
 
 import { useEffect, useRef, useState } from 'react';
 import { useForgeStore } from '../model/store';
 import { manifestYaml, tableYaml } from '../yaml/emit';
 import type { Dir, ManifestState, TableDraft, View } from '../model/types';
 
-const COPIED_LABEL_MS = 1400;
+export const COPIED_LABEL_MS = 1400;
 
 /** Which file the download button writes: the selected table's YAML on the
  * table view, else the manifest's. Pure so it's testable without a DOM click. */
@@ -33,11 +35,17 @@ export function YamlViewer({ title, yaml }: { title: string; yaml: string }) {
     [],
   );
 
-  async function handleCopy() {
-    await navigator.clipboard.writeText(yaml);
-    setCopied(true);
-    if (revertTimer.current) clearTimeout(revertTimer.current);
-    revertTimer.current = setTimeout(() => setCopied(false), COPIED_LABEL_MS);
+  function handleCopy() {
+    navigator.clipboard.writeText(yaml).then(
+      () => {
+        setCopied(true);
+        if (revertTimer.current) clearTimeout(revertTimer.current);
+        revertTimer.current = setTimeout(() => setCopied(false), COPIED_LABEL_MS);
+      },
+      // Swallow rejections (document unfocused, permission denied): the label
+      // simply never flips to "copied", which is already the honest signal.
+      () => {},
+    );
   }
 
   function handleDownload() {

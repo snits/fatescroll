@@ -21,7 +21,15 @@ export function DiceRoller() {
     if (!table) return;
 
     const fqid = fqidOf({ dirs }, table);
-    const result = engine.roll(manifestYaml(manifest, dirs), collectionFiles(dirs, tables), fqid);
+    // Error boundaries don't cover event handlers, so a WASM panic
+    // (RuntimeError) or malformed envelope (JSON.parse throw) here would
+    // otherwise be uncaught — surface it as an error line instead.
+    let result;
+    try {
+      result = engine.roll(manifestYaml(manifest, dirs), collectionFiles(dirs, tables), fqid);
+    } catch (err) {
+      result = { error: `engine failure: ${String(err)}` };
+    }
     if ('error' in result) {
       setRollLines([{ indent: 0, text: result.error, error: true }]);
     } else {
