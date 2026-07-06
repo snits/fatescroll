@@ -45,6 +45,7 @@ function makeEngine(overrides: Partial<Engine> = {}): Engine {
     expectedValues: () => null,
     histogram: () => null,
     roll: () => ({ error: 'not used' }),
+    parseCollection: () => ({ ok: false, errors: ['not used'] }),
     ...overrides,
   };
 }

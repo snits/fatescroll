@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import type { Engine, RollNode } from '../src/engine/engine';
+import type { Engine, RawEngine, RollNode } from '../src/engine/engine';
 import { wrapEngine } from '../src/engine/engine';
 import { EngineProvider, useDerived, useEngine } from '../src/engine/useEngine';
 import { initialState, useForgeStore } from '../src/model/store';
@@ -23,6 +23,7 @@ describe('wrapEngine', () => {
       expected_values: () => '',
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.validate('manifest', [])).toEqual(['boom']);
@@ -35,6 +36,7 @@ describe('wrapEngine', () => {
       expected_values: () => '',
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.diceInfo('1d6')).toEqual({
@@ -57,6 +59,7 @@ describe('wrapEngine', () => {
       expected_values: () => '',
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     engine.diceInfo('1d6');
@@ -75,6 +78,7 @@ describe('wrapEngine', () => {
       expected_values: () => '',
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.diceInfo('1d6').max).toBe(6);
@@ -93,6 +97,7 @@ describe('wrapEngine', () => {
       },
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.expectedValues('1d6', false, 0, 0)).toEqual([1, 2, 3]);
@@ -110,6 +115,7 @@ describe('wrapEngine', () => {
       expected_values: () => JSON.stringify({ ok: false, reason: 'bad expr' }),
       histogram: () => '',
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.expectedValues('bogus', false, 0, 0)).toBeNull();
@@ -127,6 +133,7 @@ describe('wrapEngine', () => {
         return JSON.stringify({ ok: true, outcomes: [[1, 0.5], [2, 0.5]] });
       },
       roll_collection: () => '',
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.histogram('1d2')).toEqual([[1, 0.5], [2, 0.5]]);
@@ -148,6 +155,7 @@ describe('wrapEngine', () => {
         seenSeed = seed;
         return JSON.stringify(tree);
       },
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     const result = engine.roll('manifest', [], 'ns.oracle');
@@ -162,6 +170,7 @@ describe('wrapEngine', () => {
       expected_values: () => '',
       histogram: () => '',
       roll_collection: () => JSON.stringify({ error: 'not found' }),
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     expect(engine.roll('manifest', [], 'ns.missing')).toEqual({ error: 'not found' });
@@ -178,6 +187,7 @@ describe('wrapEngine', () => {
         seeds.push(seed);
         return JSON.stringify({ table_name: 't', roll: 1, text: null, children: [] });
       },
+      parse_collection: () => '',
     };
     const engine = wrapEngine(raw);
     engine.roll('manifest', [], 'ns.t');
@@ -185,7 +195,53 @@ describe('wrapEngine', () => {
     expect(seeds).toHaveLength(2);
     expect(seeds[0]).not.toBe(seeds[1]);
   });
+
+  describe('parseCollection', () => {
+    const parsedEnvelope = JSON.stringify({
+      manifest: {
+        name: 'T', version: '1.0', namespace: 't',
+        author: null, min_tool_version: null,
+        directories: [{ path: 'core', namespace: 't.core' }],
+      },
+      tables: [{
+        path: 'core/oracle.yaml', namespace: 't.core', stem: 'oracle',
+        table: {
+          type: 'simple', id: 'oracle', name: 'Oracle', tags: [], notes: [],
+          roll: '1d6', modifier_range: null,
+          results: [{ min: 1, max: 6, text: 'Yes', chain: null }],
+        },
+      }],
+      ignored_yaml: ['stray.yaml'],
+    });
+
+    it('returns ok with collection and camelCased ignoredYaml', () => {
+      const raw = { ...makeRawEngine(), parse_collection: () => parsedEnvelope };
+      const engine = wrapEngine(raw);
+      const outcome = engine.parseCollection('manifest', [{ path: 'core/oracle.yaml', contents: 'x' }]);
+      if (!outcome.ok) throw new Error('expected ok');
+      expect(outcome.collection.manifest.namespace).toBe('t');
+      expect(outcome.collection.tables[0].stem).toBe('oracle');
+      expect(outcome.collection.ignoredYaml).toEqual(['stray.yaml']);
+    });
+
+    it('returns errors envelope as not-ok', () => {
+      const raw = { ...makeRawEngine(), parse_collection: () => JSON.stringify({ errors: ['manifest: bad'] }) };
+      const outcome = wrapEngine(raw).parseCollection('m', []);
+      expect(outcome).toEqual({ ok: false, errors: ['manifest: bad'] });
+    });
+  });
 });
+
+function makeRawEngine(): RawEngine {
+  return {
+    validate_collection: () => '',
+    dice_info: () => '',
+    expected_values: () => '',
+    histogram: () => '',
+    roll_collection: () => '',
+    parse_collection: () => '',
+  };
+}
 
 function makeFakeEngine(): Engine & { diceInfoCalls: number } {
   const fake = {
@@ -205,6 +261,9 @@ function makeFakeEngine(): Engine & { diceInfoCalls: number } {
     },
     roll(_manifestYaml: string, _files: unknown[], fqid: string) {
       return { table_name: fqid, roll: 3, text: 'a result', children: [] };
+    },
+    parseCollection(_manifestYaml: string, _files: { path: string; contents: string }[]) {
+      return { ok: false as const, errors: ['not used'] };
     },
   };
   return fake;
