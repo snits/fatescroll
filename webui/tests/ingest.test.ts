@@ -53,6 +53,23 @@ describe('ingest', () => {
     expect(raw.manifestYaml).toBe('name: T');
     expect(raw.files).toEqual([{ path: 'a/b/manifest.yaml', contents: 'name: nested' }]);
   });
+
+  it('rejects an absolute path', () => {
+    expect(() => ingest([{ path: '/manifest.yaml', contents: '' }])).toThrow(/unsafe path/i);
+  });
+
+  it('rejects a path with a .. segment', () => {
+    expect(() => ingest([{ path: '../manifest.yaml', contents: '' }])).toThrow(/unsafe path/i);
+  });
+
+  it('rejects a path with a nested .. segment', () => {
+    expect(() =>
+      ingest([
+        { path: 'manifest.yaml', contents: 'name: T' },
+        { path: 'a/../manifest.yaml', contents: '' },
+      ]),
+    ).toThrow(/unsafe path/i);
+  });
 });
 
 describe('entriesFromZip', () => {

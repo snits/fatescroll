@@ -25,15 +25,26 @@ function depth(path: string): number {
   return path.split('/').length - 1;
 }
 
+// Zip-slip guard, mirroring assertSafePath in ../export/zip.ts: an absolute
+// path or a `..` segment could extract outside the collection root.
+function assertSafePath(path: string): void {
+  if (path.startsWith('/') || path.split('/').includes('..')) {
+    throw new Error(`Unsafe path in collection input: "${path}"`);
+  }
+}
+
 /** Locate manifest.yaml at the root, or inside exactly one top-level
  * directory (the layout buildCollectionZip produces), and rebase all entry
  * paths relative to it. Entries outside the manifest's directory are
  * dropped. Throws with a user-facing message when no unambiguous manifest
  * exists. */
 export function ingest(entries: CollectionEntry[]): RawCollection {
+  for (const e of entries) {
+    assertSafePath(e.path);
+  }
   const candidates = entries.filter((e) => basename(e.path) === 'manifest.yaml' && depth(e.path) <= 1);
   if (candidates.length === 0) {
-    throw new Error('No manifest.yaml found at the collection root.');
+    throw new Error('No manifest.yaml found at the collection root or in a single top-level folder.');
   }
   if (candidates.length > 1) {
     throw new Error(
@@ -43,7 +54,7 @@ export function ingest(entries: CollectionEntry[]): RawCollection {
   const manifest = candidates[0];
   const prefix = manifest.path.slice(0, -'manifest.yaml'.length);
   const files = entries
-    .filter((e) => e !== manifest && e.path.startsWith(prefix))
+    .filter((e) => e.path !== manifest.path && e.path.startsWith(prefix))
     .map((e) => ({ path: e.path.slice(prefix.length), contents: e.contents }));
   return { manifestYaml: manifest.contents, files };
 }
@@ -60,7 +71,7 @@ export function entriesFromZip(data: Uint8Array): CollectionEntry[] {
  * name (the first webkitRelativePath segment) is stripped so the manifest
  * sits at the root. */
 export async function entriesFromFileList(list: FileList): Promise<CollectionEntry[]> {
-  const files = Array.from(list).filter((f) => isYamlPath(f.name));
+  const files = Array.from(list).filter((f) => isYamlPath(f.webkitRelativePath));
   return Promise.all(
     files.map(async (f) => ({
       path: f.webkitRelativePath.split('/').slice(1).join('/'),
