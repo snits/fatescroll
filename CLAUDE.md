@@ -22,11 +22,25 @@ cargo fmt --check                    # Check formatting without modifying
 
 A pre-commit hook (managed by `cargo-husky`, installed automatically on `cargo test`) runs `cargo fmt --check` and `cargo clippy -- -D warnings` on every commit. Hook source lives in `.cargo-husky/hooks/pre-commit` at the workspace root. Never bypass hooks.
 
+### webui (Table Forge)
+
+```bash
+cd webui
+npm run build:wasm    # build fatescroll-wasm to src/wasm/pkg/ (requires wasm-pack)
+npm test              # vitest: unit, component, and golden round-trip tests
+npm run build          # build:wasm + tsc -b + vite build
+```
+
+See `webui/README.md` for setup and architecture detail.
+
 ## Architecture
 
-fatescroll is a Cargo workspace with two crates:
+fatescroll is a Cargo workspace with three crates:
 - **`fatescroll-core`** — Library crate with all domain logic (no CLI dependencies). External consumers (e.g., hexwalker) depend on this.
 - **`fatescroll-cli`** — Binary crate providing the `fatescroll` CLI, depends on `fatescroll-core`.
+- **`fatescroll-wasm`** — `wasm-bindgen` crate wrapping `fatescroll-core` for the browser; exposes JSON-string functions (`validate_collection`, `dice_info`, `expected_values`, `histogram`, `roll_collection`) consumed by `webui/`.
+
+`webui/` is a React/TypeScript/Vite app ("Table Forge") for authoring fatescroll YAML collections in the browser. It runs the same `fatescroll-core` logic as the CLI via `fatescroll-wasm`, so validation and rolling share one source of truth between the browser and the CLI.
 
 The data flow is: **manifest → discovery → loading → validation → registry → rolling/display**.
 
