@@ -311,6 +311,26 @@ type: compound
 `,
     );
   });
+
+  it('emits notes before the tables list', () => {
+    const t = mkTable({
+      stem: 'combo',
+      name: 'Combo',
+      type: 'compound',
+      notes: ['Roll all sub-tables together'],
+      tableRefs: [{ rid: 'r1', ref: 'oracle' }],
+    });
+    expect(tableYaml(t)).toBe(
+      `id: combo
+name: Combo
+type: compound
+notes:
+  - Roll all sub-tables together
+tables:
+  - oracle
+`,
+    );
+  });
 });
 
 describe('yv', () => {

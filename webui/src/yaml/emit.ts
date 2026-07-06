@@ -79,6 +79,10 @@ export function tableYaml(t: TableDraft): string {
     for (const tag of t.tags) lines.push(`  - ${yv(tag)}`);
   }
   if (t.type === 'compound') {
+    if (t.notes.length) {
+      lines.push('notes:');
+      for (const n of t.notes) lines.push(`  - ${yv(n)}`);
+    }
     if (t.tableRefs.length) {
       lines.push('tables:');
       for (const r of t.tableRefs) lines.push(`  - ${yv(r.ref)}`);
