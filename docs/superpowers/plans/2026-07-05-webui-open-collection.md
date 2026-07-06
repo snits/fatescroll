@@ -224,6 +224,9 @@ fn is_manifest_name(name: &str) -> bool {
 /// only, manifests skipped. Tables must carry an `id` matching the filename
 /// stem, exactly as `build_registry` enforces. Does NOT run validate_table —
 /// semantically invalid tables load fine and get fixed in the editor.
+/// Duplicate-FQID detection is not mirrored either (the editor's live
+/// validate_collection catches collisions after load). Directory paths must
+/// be plain relative segments ("core/deep"); "./core" forms won't match.
 /// Returns {"manifest": .., "tables": [{path, namespace, stem, table}],
 /// "ignored_yaml": [..]} or {"errors": [String]} (all-or-nothing).
 #[wasm_bindgen]
@@ -1632,9 +1635,11 @@ git commit -s -m "test(webui): import round-trip against fixture and byte-identi
 
 Add an "Opening collections" paragraph under the appropriate features/usage
 section: Open (header bar) accepts a collection zip (the Export format) or a
-folder picked via the browser's directory picker; parsing and discovery run
-in fatescroll-core via wasm (`parse_collection`), so what opens is exactly
-what the CLI loads; opening is all-or-nothing with a full error list, and
+folder picked via the browser's directory picker; opening runs the same
+parsing and discovery as the CLI (fatescroll-core via wasm
+`parse_collection` — semantic validation happens live in the editor after
+load, so collections the CLI rejects for range gaps or bad dice can still
+be opened and fixed); opening is all-or-nothing with a full error list, and
 YAML files not reachable from the manifest's `directories:` entries are
 warned about. Match the README's existing tone and structure.
 
