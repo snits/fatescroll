@@ -1,19 +1,50 @@
 // ABOUTME: Tests for the header bar's presentational rendering and for the
 // ABOUTME: App-level wiring that feeds it a validation error count from the engine.
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { HeaderBar } from '../../src/components/HeaderBar';
 import { AppContent } from '../../src/App';
 import { EngineProvider } from '../../src/engine/useEngine';
 import type { Engine } from '../../src/engine/engine';
 import { initialState, useForgeStore } from '../../src/model/store';
+import type { Dir, TableDraft } from '../../src/model/types';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function makeDir(overrides: Partial<Dir> = {}): Dir {
+  return { id: 'dir-1', path: 'core', namespace: 'ns', ...overrides };
+}
+
+function makeTable(overrides: Partial<TableDraft> = {}): TableDraft {
+  return {
+    uid: 'table-1',
+    dirId: 'dir-1',
+    stem: 'oracle',
+    name: 'Oracle',
+    type: 'simple',
+    tags: [],
+    roll: '1d6',
+    modOn: false,
+    modMin: '',
+    modMax: '',
+    notes: [],
+    results: [],
+    tableRefs: [],
+    ...overrides,
+  };
+}
 
 
 describe('HeaderBar', () => {
+  beforeEach(() => {
+    useForgeStore.setState(initialState());
+  });
+
   it('renders the brand block and the collection name', () => {
     render(<HeaderBar collectionName="Border Marches" errorCount={0} />);
 
@@ -42,10 +73,43 @@ describe('HeaderBar', () => {
     expect(screen.getByText('1 error')).toBeTruthy();
   });
 
-  it('renders a disabled export button', () => {
+  it('renders an enabled export button', () => {
     render(<HeaderBar collectionName="Border Marches" errorCount={0} />);
     const button = screen.getByRole('button', { name: /export collection/i }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
+    expect(button.disabled).toBe(false);
+  });
+
+  it('stays enabled even when the collection has validation errors', () => {
+    render(<HeaderBar collectionName="Border Marches" errorCount={3} />);
+    const button = screen.getByRole('button', { name: /export collection/i }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it('clicking export builds a zip Blob named after the collection slug and downloads it', () => {
+    useForgeStore.setState({
+      manifest: { ...initialState().manifest, name: 'Kal-Arath Collection!' },
+      dirs: [makeDir()],
+      tables: [makeTable()],
+    });
+
+    const createObjectURL = vi.fn((_obj: Blob) => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+    let downloadedName = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadedName = this.download;
+    });
+
+    render(<HeaderBar collectionName="stale prop name" errorCount={0} />);
+    fireEvent.click(screen.getByRole('button', { name: /export collection/i }));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe('application/zip');
+    expect(downloadedName).toBe('kal-arath-collection.zip');
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
   });
 });
 

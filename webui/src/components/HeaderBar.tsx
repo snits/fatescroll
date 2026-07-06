@@ -1,5 +1,10 @@
 // ABOUTME: Header bar for Table Forge: brand block, collection name, live
-// ABOUTME: validation status pill, and the (disabled until Task 11) export button.
+// ABOUTME: validation status pill, and the collection zip export button.
+
+import { buildCollectionZip } from '../export/zip';
+import { collectionSlug } from '../logic/slug';
+import { useForgeStore } from '../model/store';
+import { collectionFiles, manifestYaml } from '../yaml/emit';
 
 export interface HeaderBarProps {
   collectionName: string;
@@ -11,6 +16,18 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
   const statusText = valid
     ? 'Collection is valid'
     : `${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`;
+
+  function handleExport() {
+    const { manifest, dirs, tables } = useForgeStore.getState();
+    const slug = collectionSlug(manifest.name);
+    const zip = buildCollectionZip(slug, manifestYaml(manifest, dirs), collectionFiles(dirs, tables));
+    const url = URL.createObjectURL(new Blob([zip], { type: 'application/zip' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${slug}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <header className="app-header">
@@ -31,7 +48,7 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
         <span className="header-status-dot" />
         <span className="header-status-text">{statusText}</span>
       </div>
-      <button type="button" className="header-export" disabled>
+      <button type="button" className="header-export" onClick={handleExport}>
         Export collection ▾
       </button>
     </header>
