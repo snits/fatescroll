@@ -83,16 +83,23 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    openFromEntries(entriesFromZip(new Uint8Array(await file.arrayBuffer())));
+    try {
+      openFromEntries(entriesFromZip(new Uint8Array(await file.arrayBuffer())));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    }
   }
 
   async function handleFolderPicked(e: React.ChangeEvent<HTMLInputElement>) {
     setOpenMenu(false);
     const list = e.target.files;
-    if (!list || list.length === 0) return;
-    const entries = await entriesFromFileList(list);
     e.target.value = '';
-    openFromEntries(entries);
+    if (!list || list.length === 0) return;
+    try {
+      openFromEntries(await entriesFromFileList(list));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    }
   }
 
   return (
@@ -119,11 +126,11 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
           Open collection ▾
         </button>
         {openMenu && (
-          <div className="header-open-menu" role="menu">
-            <button type="button" role="menuitem" onClick={() => zipInputRef.current?.click()}>
+          <div className="header-open-menu">
+            <button type="button" onClick={() => zipInputRef.current?.click()}>
               From zip…
             </button>
-            <button type="button" role="menuitem" onClick={() => folderInputRef.current?.click()}>
+            <button type="button" onClick={() => folderInputRef.current?.click()}>
               From folder…
             </button>
           </div>
