@@ -1374,17 +1374,21 @@ Markup, before the export button:
           onChange={handleZipPicked}
         />
         <input
-          ref={folderInputRef}
+          ref={(el) => {
+            folderInputRef.current = el;
+            if (el) el.webkitdirectory = true;
+          }}
           data-testid="open-folder-input"
           type="file"
           hidden
           onChange={handleFolderPicked}
-          webkitdirectory=""
         />
       </div>
 ```
 
-(`webkitdirectory=""` renders and typechecks clean under React 19 + TS 6.)
+(`webkitdirectory` is a real `HTMLInputElement` DOM property in lib.dom but
+is absent from @types/react's `InputHTMLAttributes`, so the JSX-attribute
+form fails `tsc -b` — set it via the callback ref instead.)
 
 Add to `webui/src/styles/components.css`, near the header styles (match the
 file's existing formatting and color values — reuse the export button's
