@@ -1,8 +1,8 @@
 body {
   background: var(--bg-page);
   background-image:
-    radial-gradient(circle at top left, rgba(255, 250, 235, 0.5), transparent 45%),
-    radial-gradient(circle at bottom right, rgba(160, 130, 80, 0.1), transparent 55%);
+    radial-gradient(circle at 20% 10%, rgba(255, 250, 235, 0.5), transparent 40%),
+    radial-gradient(circle at 85% 90%, rgba(160, 130, 80, 0.1), transparent 45%);
   color: var(--text);
   font: 15px var(--font-body);
 }
