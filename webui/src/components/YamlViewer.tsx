@@ -4,6 +4,7 @@
 // ABOUTME: screen; download re-emits fresh from the store at click time.
 
 import { useEffect, useRef, useState } from 'react';
+import { triggerDownload } from '../logic/download';
 import { useForgeStore } from '../model/store';
 import { manifestYaml, tableYaml } from '../yaml/emit';
 import type { Dir, ManifestState, TableDraft, View } from '../model/types';
@@ -51,12 +52,7 @@ export function YamlViewer({ title, yaml }: { title: string; yaml: string }) {
   function handleDownload() {
     const { view, selUid, manifest, dirs, tables } = useForgeStore.getState();
     const { filename, content } = downloadTarget(view, selUid, { manifest, dirs, tables });
-    const url = URL.createObjectURL(new Blob([content], { type: 'text/yaml' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    triggerDownload(filename, new Blob([content], { type: 'text/yaml' }));
   }
 
   return (

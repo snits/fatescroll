@@ -59,4 +59,24 @@ describe('buildCollectionZip', () => {
     expect(strFromU8(unzipped[`${slug}/core/oracle.yaml`])).toBe(tableYaml(tables[0]));
     expect(strFromU8(unzipped[`${slug}/core/weather/spring.yaml`])).toBe(tableYaml(tables[1]));
   });
+
+  it('throws on duplicate entry paths instead of silently dropping a file', () => {
+    const dirs: Dir[] = [{ id: 'd1', path: 'core', namespace: 'ns.core' }];
+    const tables = [
+      mkTable({ uid: 't1', dirId: 'd1', stem: 'oracle' }),
+      mkTable({ uid: 't2', dirId: 'd1', stem: 'oracle' }),
+    ];
+    const files = collectionFiles(dirs, tables);
+    expect(() => buildCollectionZip('slug', 'name: x\n', files)).toThrow('slug/core/oracle.yaml');
+  });
+
+  it('throws on a path with .. segments instead of writing a zip-slip entry', () => {
+    const files = [{ path: '../evil/oracle.yaml', namespace: 'ns', stem: 'oracle', contents: 'id: oracle\n' }];
+    expect(() => buildCollectionZip('slug', 'name: x\n', files)).toThrow('../evil/oracle.yaml');
+  });
+
+  it('throws on an absolute path instead of writing a broken entry', () => {
+    const files = [{ path: '/abs/oracle.yaml', namespace: 'ns', stem: 'oracle', contents: 'id: oracle\n' }];
+    expect(() => buildCollectionZip('slug', 'name: x\n', files)).toThrow('/abs/oracle.yaml');
+  });
 });

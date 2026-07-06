@@ -165,6 +165,24 @@ describe('ManifestEditor directories', () => {
     expect(useForgeStore.getState().dirs[0].namespace).toBe('fatescroll.monsters');
   });
 
+  it('marks a directory path input invalid when it fails the dir-path check', () => {
+    useForgeStore.setState({ dirs: [makeDir({ path: '../up' })] });
+    render(<ManifestEditor />);
+    expect(screen.getByLabelText(/^path$/).className).toContain('field-input--invalid');
+  });
+
+  it('marks a newly added directory path input invalid while it is still empty', () => {
+    useForgeStore.setState({ dirs: [makeDir({ path: '' })] });
+    render(<ManifestEditor />);
+    expect(screen.getByLabelText(/^path$/).className).toContain('field-input--invalid');
+  });
+
+  it('does not mark a directory path input invalid when it is valid', () => {
+    useForgeStore.setState({ dirs: [makeDir({ path: 'core/weather' })] });
+    render(<ManifestEditor />);
+    expect(screen.getByLabelText(/^path$/).className).not.toContain('field-input--invalid');
+  });
+
   it('marks a directory namespace input invalid when it fails the namespace pattern', () => {
     useForgeStore.setState({ dirs: [makeDir({ namespace: 'Bad!' })] });
     render(<ManifestEditor />);

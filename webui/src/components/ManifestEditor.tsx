@@ -1,6 +1,7 @@
 // ABOUTME: Center-pane editor for the collection manifest: name/version/namespace/
 // ABOUTME: author/min-tool-version fields plus the directory-to-namespace map.
 
+import { isValidDirPath } from '../logic/dirpath';
 import { isValidNamespace } from '../logic/namespace';
 import { tablesInDir, useForgeStore } from '../model/store';
 import type { Dir } from '../model/types';
@@ -30,7 +31,7 @@ function DirRow({
       <label className="field-label field-label--sm">
         <span className="field-label-text">path</span>
         <input
-          className="field-input field-input--mono"
+          className={cx('field-input', 'field-input--mono', !isValidDirPath(dir.path) && 'field-input--invalid')}
           value={dir.path}
           onChange={(e) => onUpdate({ path: e.target.value })}
         />
