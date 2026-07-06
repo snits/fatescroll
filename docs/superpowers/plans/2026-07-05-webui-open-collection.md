@@ -1321,7 +1321,13 @@ Inside the component:
         `Opened with warnings — these YAML files are not listed in the manifest and will not be part of exports:\n${outcome.collection.ignoredYaml.join('\n')}`,
       );
     }
-    useForgeStore.getState().loadCollection(mapDrafts(outcome.collection));
+    // mapDrafts throws if a parsed table matches no manifest directory — a
+    // drifted-contract guard against silent data loss on re-export.
+    try {
+      useForgeStore.getState().loadCollection(mapDrafts(outcome.collection));
+    } catch (err) {
+      window.alert(String(err instanceof Error ? err.message : err));
+    }
   }
 
   async function handleZipPicked(e: React.ChangeEvent<HTMLInputElement>) {
