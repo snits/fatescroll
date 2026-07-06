@@ -3,12 +3,12 @@
 // ABOUTME: fresh-state binding, output rendering, roll-clears-on-edit).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { DiceRoller } from '../../src/components/DiceRoller';
 import { RightPane } from '../../src/components/RightPane';
 import { ValidationPanel } from '../../src/components/ValidationPanel';
-import { downloadTarget, YamlViewer } from '../../src/components/YamlViewer';
+import { COPIED_LABEL_MS, downloadTarget, YamlViewer } from '../../src/components/YamlViewer';
 import { EngineProvider } from '../../src/engine/useEngine';
 import type { Engine, RollNode } from '../../src/engine/engine';
 import type { FileInput } from '../../src/yaml/emit';
@@ -98,15 +98,38 @@ describe('YamlViewer', () => {
     // userEvent.setup() installs its own clipboard stub unconditionally, which
     // would shadow this mock — use fireEvent instead so the app's real
     // navigator.clipboard.writeText call is observable.
-    const writeText = mockClipboard();
+    vi.useFakeTimers();
+    try {
+      const writeText = mockClipboard();
+      render(<YamlViewer title="MANIFEST.YAML" yaml={'name: Foo\n'} />);
+
+      fireEvent.click(screen.getByRole('button', { name: '⧉ copy' }));
+      await act(async () => {}); // flush the resolved writeText promise
+
+      expect(writeText).toHaveBeenCalledWith('name: Foo\n');
+      expect(screen.getByRole('button', { name: '✓ copied' })).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(COPIED_LABEL_MS);
+      });
+      expect(screen.getByRole('button', { name: '⧉ copy' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the copy label unchanged when the clipboard write is rejected', async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException('Document is not focused.'));
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<YamlViewer title="MANIFEST.YAML" yaml={'name: Foo\n'} />);
 
     fireEvent.click(screen.getByRole('button', { name: '⧉ copy' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('name: Foo\n'));
-    await waitFor(() => expect(screen.getByRole('button', { name: '✓ copied' })).toBeTruthy());
-    await waitFor(() => expect(screen.getByRole('button', { name: '⧉ copy' })).toBeTruthy(), {
-      timeout: 2000,
-    });
+    await act(async () => {}); // flush the rejected writeText promise
+
+    expect(writeText).toHaveBeenCalledWith('name: Foo\n');
+    // No unhandled rejection (vitest would fail the run) and no false success.
+    expect(screen.getByRole('button', { name: '⧉ copy' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '✓ copied' })).toBeNull();
   });
 
   it('downloads the manifest yaml/filename on the manifest view', () => {
@@ -240,6 +263,29 @@ describe('DiceRoller', () => {
     const lines = container.querySelectorAll('.dice-roller-line');
     expect(lines).toHaveLength(1);
     expect(lines[0].textContent).toBe('cyclic chain detected');
+    expect(lines[0].className).toContain('dice-roller-line--error');
+  });
+
+  it('renders an error line when engine.roll throws instead of crashing the handler', () => {
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [makeTable()],
+      view: 'table',
+      selUid: 'table-1',
+    });
+    const engine = makeEngine({
+      roll: () => {
+        throw new Error('wasm panicked');
+      },
+    });
+    const { container } = render(<DiceRoller />, { wrapper: wrapper(engine) });
+
+    fireEvent.click(screen.getByRole('button', { name: /Roll/ }));
+
+    const lines = container.querySelectorAll('.dice-roller-line');
+    expect(lines).toHaveLength(1);
+    expect(lines[0].textContent).toContain('engine failure');
+    expect(lines[0].textContent).toContain('wasm panicked');
     expect(lines[0].className).toContain('dice-roller-line--error');
   });
 
