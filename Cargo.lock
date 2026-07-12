@@ -139,8 +139,8 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 
 [[package]]
 name = "diceman"
-version = "0.4.0"
-source = "git+https://github.com/snits/diceman.git?tag=v0.4.0#b19362e26d958c9ae5c2268b64d8a03556df4ed2"
+version = "0.5.0"
+source = "git+https://github.com/snits/diceman.git?tag=v0.6.0#d759af37ef7e3e35ad46b14e9d9cc26dab384652"
 dependencies = [
  "fastrand",
  "thiserror",
