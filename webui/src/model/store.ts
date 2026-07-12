@@ -1,9 +1,13 @@
 // ABOUTME: Zustand store holding the Table Forge editor's manifest, directories, and table drafts.
 // ABOUTME: Also tracks the current selection (view/selUid) and the last dice-roll preview.
 
-import { create } from 'zustand';
+import { create, type StateCreator } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { uid } from './ids';
 import type { Dir, ManifestState, TableDraft, View } from './types';
+
+// localStorage key under which the working draft is auto-saved.
+export const STORAGE_KEY = 'fatescroll-table-forge';
 
 export interface RollLine {
   indent: number;
@@ -56,6 +60,48 @@ function withClearedRoll<T extends Partial<ForgeData>>(patch: T): T & { rollLine
   return { ...patch, rollLines: null };
 }
 
+// The document fields written to localStorage. Ephemeral preview state
+// (rollLines) is deliberately excluded so a reload never restores a stale roll.
+type PersistedDoc = Pick<ForgeData, 'manifest' | 'dirs' | 'tables' | 'view' | 'selUid'>;
+
+const VIEWS: readonly View[] = ['empty', 'manifest', 'table'];
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+// Validates a blob read back from localStorage. Returns a usable document, or
+// null when the shape has drifted or is corrupt — the caller then keeps the
+// fresh initial state instead of crashing on a stale schema. Elements must be
+// objects: a primitive dir/table would slip past the arrays and later throw in
+// the editor (e.g. reading `table.results`). Missing manifest fields inherit
+// their defaults so consumers never read undefined.
+//
+// Element *contents* are trusted once the container shape checks out: partialize
+// only ever writes complete drafts, and a shape change bumps the version (which
+// discards the old blob), so deep per-field validation would earn nothing here.
+function coerceDocument(persisted: unknown): PersistedDoc | null {
+  if (!isObject(persisted)) return null;
+  const p = persisted;
+  if (!isObject(p.manifest)) return null;
+  if (!Array.isArray(p.dirs) || !p.dirs.every(isObject)) return null;
+  if (!Array.isArray(p.tables) || !p.tables.every(isObject)) return null;
+  const tables = p.tables as unknown as TableDraft[];
+  const selUid = typeof p.selUid === 'string' ? p.selUid : null;
+  const view = VIEWS.includes(p.view as View) ? (p.view as View) : 'manifest';
+  // A table view whose selection no longer resolves is incoherent (only
+  // reachable via drift/tampering, since the two are written atomically); fall
+  // back to the manifest view so no component renders a dangling selection.
+  const danglingSelection = view === 'table' && !tables.some((t) => t.uid === selUid);
+  return {
+    manifest: { ...initialState().manifest, ...(p.manifest as Partial<ManifestState>) },
+    dirs: p.dirs as unknown as Dir[],
+    tables,
+    view: danglingSelection ? 'manifest' : view,
+    selUid: danglingSelection ? null : selUid,
+  };
+}
+
 // Finds the uid of the surviving table adjacent to a just-removed one: the
 // next table after it, falling back to the previous one, else none.
 function selectNextSurviving(
@@ -72,7 +118,7 @@ function selectNextSurviving(
   return null;
 }
 
-export const useForgeStore = create<ForgeState>()((set) => ({
+const forgeState: StateCreator<ForgeState, [['zustand/persist', unknown]], []> = (set) => ({
   ...initialState(),
 
   selectManifest: () => set({ view: 'manifest', selUid: null }),
@@ -169,7 +215,33 @@ export const useForgeStore = create<ForgeState>()((set) => ({
     set({ ...data, view: 'manifest', selUid: null, rollLines: null }),
 
   setRollLines: (lines) => set({ rollLines: lines }),
-}));
+});
+
+export const useForgeStore = create<ForgeState>()(
+  persist(forgeState, {
+    name: STORAGE_KEY,
+    // Bump this whenever the persisted shape (PersistedDoc / TableDraft / Dir /
+    // ManifestState) changes: an old-schema save is dropped instead of
+    // rehydrated into a mismatched shape that could crash the editor.
+    version: 1,
+    // Returning undefined discards a stored draft on a version mismatch. It
+    // also stands in for the default migration so zustand does not log an error
+    // to the console when an old draft is dropped.
+    migrate: () => undefined,
+    partialize: ({ manifest, dirs, tables, view, selUid }): PersistedDoc => ({
+      manifest,
+      dirs,
+      tables,
+      view,
+      selUid,
+    }),
+    merge: (persisted, current) => {
+      const doc = coerceDocument(persisted);
+      // A rehydrated draft starts with no roll preview, mirroring loadCollection.
+      return doc ? { ...current, ...doc, rollLines: null } : current;
+    },
+  }),
+);
 
 export function fqidOf(state: Pick<ForgeState, 'dirs'>, table: TableDraft): string {
   const dir = state.dirs.find((d) => d.id === table.dirId);
