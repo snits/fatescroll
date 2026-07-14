@@ -77,3 +77,10 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/SYNC_CONCEPTS.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## PROJECT SCALE CONTEXT
+
+- **Users**: Single developer (Jerry), personal CLI tool and RPG-table authoring web UI
+- **Codebase**: Small Cargo workspace with a React/TypeScript/Vite web UI and Rust core/CLI crates
+- **Complexity preference**: Simple, pragmatic, YAGNI
+- **Process**: TDD mandatory, frequent commits, beads for issue tracking
