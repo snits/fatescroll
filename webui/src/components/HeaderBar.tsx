@@ -19,6 +19,7 @@ export interface HeaderBarProps {
 
 export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
   const { engine } = useEngine();
+  const startNewCollection = useForgeStore((s) => s.startNewCollection);
   const [openMenu, setOpenMenu] = useState(false);
   const zipInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +79,12 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
     }
   }
 
+  function handleStartNewCollection() {
+    if (!window.confirm('Start a new collection? Unexported work will be lost.')) return;
+    startNewCollection();
+    setOpenMenu(false);
+  }
+
   async function handleZipPicked(e: React.ChangeEvent<HTMLInputElement>) {
     setOpenMenu(false);
     const file = e.target.files?.[0];
@@ -132,6 +139,9 @@ export function HeaderBar({ collectionName, errorCount }: HeaderBarProps) {
             </button>
             <button type="button" onClick={() => folderInputRef.current?.click()}>
               From folder…
+            </button>
+            <button type="button" onClick={handleStartNewCollection}>
+              Start new collection
             </button>
           </div>
         )}

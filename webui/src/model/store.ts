@@ -35,6 +35,7 @@ export interface ForgeState extends ForgeData {
   updateTable(uid: string, patch: Partial<Omit<TableDraft, 'uid'>>): void;
   deleteTable(uid: string): void;
   loadCollection(data: { manifest: ManifestState; dirs: Dir[]; tables: TableDraft[] }): void;
+  startNewCollection(): void;
   setRollLines(lines: RollLine[] | null): void;
 }
 
@@ -213,6 +214,11 @@ const forgeState: StateCreator<ForgeState, [['zustand/persist', unknown]], []> =
 
   loadCollection: (data) =>
     set({ ...data, view: 'manifest', selUid: null, rollLines: null }),
+
+  startNewCollection: () => {
+    set(initialState());
+    useForgeStore.persist.clearStorage();
+  },
 
   setRollLines: (lines) => set({ rollLines: lines }),
 });

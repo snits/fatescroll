@@ -2,7 +2,7 @@
 // ABOUTME: fallback, roll-preview invalidation, and the fqidOf/tablesInDir selectors.
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { fqidOf, initialState, refResolves, tablesInDir, useForgeStore } from '../src/model/store';
+import { fqidOf, initialState, refResolves, STORAGE_KEY, tablesInDir, useForgeStore } from '../src/model/store';
 
 beforeEach(() => {
   useForgeStore.setState(initialState());
@@ -464,6 +464,26 @@ describe('loadCollection', () => {
     expect(s.view).toBe('manifest');
     expect(s.selUid).toBeNull();
     expect(s.rollLines).toBeNull();
+  });
+});
+
+describe('startNewCollection', () => {
+  it('resets the document and removes its persisted draft', () => {
+    useForgeStore.persist.clearStorage();
+    useForgeStore.getState().addDir();
+    useForgeStore.getState().addTable(useForgeStore.getState().dirs[0].id);
+    expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+
+    useForgeStore.getState().startNewCollection();
+
+    const state = useForgeStore.getState();
+    expect(state.manifest).toEqual(initialState().manifest);
+    expect(state.dirs).toEqual([]);
+    expect(state.tables).toEqual([]);
+    expect(state.view).toBe('empty');
+    expect(state.selUid).toBeNull();
+    expect(state.rollLines).toBeNull();
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
 

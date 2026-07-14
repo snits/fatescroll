@@ -9,7 +9,7 @@ import { HeaderBar } from '../../src/components/HeaderBar';
 import { AppContent } from '../../src/App';
 import { EngineProvider } from '../../src/engine/useEngine';
 import type { Engine } from '../../src/engine/engine';
-import { initialState, useForgeStore } from '../../src/model/store';
+import { initialState, STORAGE_KEY, useForgeStore } from '../../src/model/store';
 import type { Dir, TableDraft } from '../../src/model/types';
 
 afterEach(() => {
@@ -282,6 +282,43 @@ describe('open collection', () => {
     await waitFor(() => expect(confirm).toHaveBeenCalled());
     expect(parseCollection).not.toHaveBeenCalled();
     expect(useForgeStore.getState().tables).toHaveLength(1);
+  });
+
+  it('starts a fresh collection from the open menu after confirmation', () => {
+    useForgeStore.persist.clearStorage();
+    useForgeStore.getState().addDir();
+    useForgeStore.getState().addTable(useForgeStore.getState().dirs[0].id);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
+      wrapper: wrapper(makeFakeEngine([])),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open collection/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start new collection/i }));
+
+    expect(confirm).toHaveBeenCalledWith('Start a new collection? Unexported work will be lost.');
+    expect(useForgeStore.getState().manifest).toEqual(initialState().manifest);
+    expect(useForgeStore.getState().dirs).toEqual([]);
+    expect(useForgeStore.getState().tables).toEqual([]);
+    expect(useForgeStore.getState().view).toBe('empty');
+    expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+  });
+
+  it('keeps the collection when starting fresh is canceled', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    useForgeStore.getState().addDir();
+    const dir = useForgeStore.getState().dirs[0];
+
+    render(<HeaderBar collectionName="New Collection" errorCount={0} />, {
+      wrapper: wrapper(makeFakeEngine([])),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /open collection/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start new collection/i }));
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(useForgeStore.getState().dirs).toEqual([dir]);
   });
 });
 
