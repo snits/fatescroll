@@ -10,6 +10,7 @@ use diceman::{Expr, Op, ScoringMode};
 /// decimal digits; the side count comes from the pool's die kind.
 pub fn digit_dice_params(expr: &Expr) -> Option<(u32, u32)> {
     match expr {
+        Expr::Group(inner) => digit_dice_params(inner),
         Expr::Roll(roll) if matches!(roll.scoring(), ScoringMode::DigitConcatenate) => {
             let pool = &roll.pools()[0];
             Some((pool.kind.count(), pool.count))
@@ -24,6 +25,7 @@ pub fn digit_dice_params(expr: &Expr) -> Option<(u32, u32)> {
 /// (dice+dice, mul/div).
 pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
     let parsed = diceman::parse(expr)?;
+    validate_dice_counts(&parsed)?;
     match parsed {
         Expr::Roll(roll) => {
             if !roll.modifiers().is_empty() {
@@ -37,7 +39,11 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
                 }
                 ScoringMode::Sum => {
                     let sides = pool.kind.count();
-                    Ok((pool.count, pool.count * sides))
+                    let max = pool
+                        .count
+                        .checked_mul(sides)
+                        .ok_or_else(|| unsupported(expr, "outcome range overflows u32"))?;
+                    Ok((pool.count, max))
                 }
                 _ => Err(unsupported(expr, "scoring mode")),
             }
@@ -58,11 +64,15 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
                 _ => return Err(unsupported(expr, "non-literal right-hand expression")),
             };
             let pool = &roll.pools()[0];
-            let sides = pool.kind.count() as i64;
             let count = pool.count as i64;
+            let max_without_modifier = pool
+                .count
+                .checked_mul(pool.kind.count())
+                .ok_or_else(|| unsupported(expr, "outcome range overflows u32"))?
+                as i64;
             let (min, max) = match op {
-                Op::Add => (count + z, count * sides + z),
-                Op::Sub => (count - z, count * sides - z),
+                Op::Add => (count + z, max_without_modifier + z),
+                Op::Sub => (count - z, max_without_modifier - z),
                 _ => return Err(unsupported(expr, "operator (only +/- supported)")),
             };
             if min < 0 || max < 0 {
@@ -73,9 +83,29 @@ pub fn dice_range(expr: &str) -> Result<(u32, u32), Error> {
                     },
                 ));
             }
-            Ok((min as u32, max as u32))
+            let min =
+                u32::try_from(min).map_err(|_| unsupported(expr, "outcome range exceeds u32"))?;
+            let max =
+                u32::try_from(max).map_err(|_| unsupported(expr, "outcome range exceeds u32"))?;
+            Ok((min, max))
         }
         _ => Err(unsupported(expr, "expression type")),
+    }
+}
+
+/// Rejects expressions containing a dice pool with no dice to roll.
+pub fn validate_dice_counts(expr: &Expr) -> Result<(), Error> {
+    match expr {
+        Expr::Number(_) => Ok(()),
+        Expr::Group(inner) => validate_dice_counts(inner),
+        Expr::BinOp { left, right, .. } => {
+            validate_dice_counts(left)?;
+            validate_dice_counts(right)
+        }
+        Expr::Roll(roll) if roll.pools().iter().any(|pool| pool.count == 0) => {
+            Err(unsupported("dice expression", "contains zero dice"))
+        }
+        Expr::Roll(_) => Ok(()),
     }
 }
 
@@ -137,6 +167,22 @@ mod tests {
     }
 
     #[test]
+    fn dice_range_rejects_zero_sided_die() {
+        assert!(dice_range("1d0").is_err());
+    }
+
+    #[test]
+    fn dice_range_rejects_zero_dice() {
+        assert!(dice_range("0d6").is_err());
+    }
+
+    #[test]
+    fn dice_range_rejects_an_overflowing_outcome_range() {
+        assert!(dice_range("2d4294967295").is_err());
+        assert!(dice_range("1d4294967295+1").is_err());
+    }
+
+    #[test]
     fn dice_range_rejects_keep_modifier() {
         let err = dice_range("4d6kh3").unwrap_err();
         assert!(
@@ -191,6 +237,12 @@ mod tests {
         let (min, max) = dice_range("D66").unwrap();
         assert_eq!(min, 11);
         assert_eq!(max, 66);
+    }
+
+    #[test]
+    fn digit_dice_params_unwraps_groups() {
+        let parsed = diceman::parse("(D66)").unwrap();
+        assert_eq!(digit_dice_params(&parsed), Some((6, 2)));
     }
 
     #[test]

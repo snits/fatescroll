@@ -3,7 +3,9 @@
 
 use fatescroll_core::collection::CollectionFile;
 use fatescroll_core::models::{Manifest, ModifierRange, Table};
-use fatescroll_core::validator::{EnvelopeError, outcome_envelope, validate_references};
+use fatescroll_core::validator::{
+    EnvelopeError, bounded_envelope, outcome_envelope, validate_references,
+};
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
@@ -65,6 +67,9 @@ pub fn dice_info(expr: &str) -> String {
         Ok(p) => p,
         Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
     };
+    if let Err(e) = fatescroll_core::dice::validate_dice_counts(&parsed) {
+        return json!({ "ok": false, "reason": e.to_string() }).to_string();
+    }
     if let Some((sides, count)) = fatescroll_core::dice::digit_dice_params(&parsed) {
         let values = fatescroll_core::dice::digit_dice_values(sides, count);
         return json!({
@@ -75,20 +80,27 @@ pub fn dice_info(expr: &str) -> String {
         .to_string();
     }
     match fatescroll_core::dice::dice_range(expr) {
-        Ok((min, max)) => json!({
-            "ok": true, "kind": "range", "min": min, "max": max,
-            "outcomes": (max - min + 1),
-        })
-        .to_string(),
-        // Analytically unsupported (keep/drop, exploding, ...): fall back to
-        // the same seeded simulation the validator uses for envelopes.
-        Err(_) => match diceman::simulate_seeded(expr, 100_000, 42) {
-            Ok(sim) => json!({
-                "ok": true, "kind": "simulated", "min": sim.min, "max": sim.max,
-                "outcomes": (sim.max - sim.min + 1),
+        Ok((min, max)) => match bounded_envelope(i64::from(min), i64::from(max)) {
+            Ok((min, max)) => json!({
+                "ok": true, "kind": "range", "min": min, "max": max,
+                "outcomes": (max - min + 1),
             })
             .to_string(),
-            Err(e) => json!({ "ok": false, "reason": e.to_string() }).to_string(),
+            Err(width) => json!({
+                "ok": false,
+                "reason": format!("envelope exceeds supported bounds (width {width})"),
+            })
+            .to_string(),
+        },
+        // Analytically unsupported (keep/drop, exploding, ...): use the same
+        // seeded envelope calculation as table validation.
+        Err(_) => match outcome_envelope(expr, None) {
+            Ok((min, max)) => json!({
+                "ok": true, "kind": "simulated", "min": min, "max": max,
+                "outcomes": (max - min + 1),
+            })
+            .to_string(),
+            Err(e) => json!({ "ok": false, "reason": envelope_reason(e) }).to_string(),
         },
     }
 }
@@ -107,6 +119,9 @@ pub fn expected_values(expr: &str, mod_on: bool, mod_min: i32, mod_max: i32) -> 
         Ok(p) => p,
         Err(e) => return json!({ "ok": false, "reason": e.to_string() }).to_string(),
     };
+    if let Err(e) = fatescroll_core::dice::validate_dice_counts(&parsed) {
+        return json!({ "ok": false, "reason": e.to_string() }).to_string();
+    }
     if let Some((sides, count)) = fatescroll_core::dice::digit_dice_params(&parsed) {
         if mod_on {
             return json!({ "ok": false, "reason": "modifier_range unsupported for digit dice" })
@@ -149,6 +164,9 @@ fn envelope_reason(err: EnvelopeError) -> String {
 /// {"ok":true,"outcomes":[[value, probability], ...]} or {"ok":false,"reason":...}.
 #[wasm_bindgen]
 pub fn histogram(expr: &str) -> String {
+    if let Err(e) = outcome_envelope(expr, None) {
+        return json!({ "ok": false, "reason": envelope_reason(e) }).to_string();
+    }
     match diceman::simulate_seeded(expr, 100_000, 42) {
         Ok(sim) => {
             let n = sim.n as f64;
@@ -364,9 +382,27 @@ mod tests {
             ),
             (Some("digit"), Some(11), Some(66), Some(36))
         );
+        let grouped_d66: serde_json::Value = serde_json::from_str(&dice_info("(D66)")).unwrap();
+        assert_eq!(grouped_d66["kind"].as_str(), Some("digit"));
         let bad: serde_json::Value = serde_json::from_str(&dice_info("not dice")).unwrap();
         assert_eq!(bad["ok"].as_bool(), Some(false));
         assert!(bad["reason"].is_string());
+    }
+
+    #[test]
+    fn dice_info_rejects_invalid_table_envelopes() {
+        for expr in [
+            "0d6",
+            "1d0",
+            "1d6 - 3",
+            "1d100000+2147483647",
+            "1d4294967295",
+            "2d4294967295",
+        ] {
+            let info: serde_json::Value = serde_json::from_str(&dice_info(expr)).unwrap();
+            assert_eq!(info["ok"].as_bool(), Some(false), "{expr}: {info}");
+            assert!(info["reason"].is_string(), "{expr}: {info}");
+        }
     }
 
     #[test]
@@ -389,6 +425,16 @@ mod tests {
         let err: serde_json::Value =
             serde_json::from_str(&expected_values("D66", true, 0, 1)).unwrap();
         assert_eq!(err["ok"].as_bool(), Some(false));
+
+        let grouped: serde_json::Value =
+            serde_json::from_str(&expected_values("(D66)", false, 0, 0)).unwrap();
+        let grouped_values = grouped["values"].as_array().unwrap();
+        assert_eq!(grouped_values.len(), 36);
+        assert!(
+            !grouped_values
+                .iter()
+                .any(|value| value.as_i64() == Some(17))
+        );
     }
 
     #[test]
@@ -400,6 +446,15 @@ mod tests {
         // sorted by value, min 2 max 12
         assert_eq!(outcomes.first().unwrap()[0].as_i64(), Some(2));
         assert_eq!(outcomes.last().unwrap()[0].as_i64(), Some(12));
+    }
+
+    #[test]
+    fn histogram_rejects_invalid_table_envelopes() {
+        for expr in ["0d6", "1d6 - 3", "1d4294967295"] {
+            let info: serde_json::Value = serde_json::from_str(&histogram(expr)).unwrap();
+            assert_eq!(info["ok"].as_bool(), Some(false), "{expr}: {info}");
+            assert!(info["reason"].is_string(), "{expr}: {info}");
+        }
     }
 
     #[test]

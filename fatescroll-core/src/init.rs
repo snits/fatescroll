@@ -1,7 +1,7 @@
 // ABOUTME: Generates table YAML skeletons from dice expressions or entry counts.
 // ABOUTME: Supports explicit, flat, and bell curve distribution modes.
 
-use crate::dice::{dice_range, digit_dice_params, digit_dice_values};
+use crate::dice::{dice_range, digit_dice_params, digit_dice_values, validate_dice_counts};
 use crate::error::Error;
 
 /// Generate a table YAML skeleton from a dice expression.
@@ -10,6 +10,7 @@ use crate::error::Error;
 /// values are emitted — not the full contiguous range.
 pub fn generate_template(roll_expr: &str, name: &str) -> Result<String, Error> {
     let parsed = diceman::parse(roll_expr)?;
+    validate_dice_counts(&parsed)?;
     let values: Vec<u32> = match digit_dice_params(&parsed) {
         Some((sides, count)) => digit_dice_values(sides, count),
         None => {

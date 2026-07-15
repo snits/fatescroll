@@ -2,7 +2,7 @@
 // ABOUTME: the simple body (roll, modifier range, results, notes) or the compound body.
 
 import { useEngine } from '../engine/useEngine';
-import type { DiceInfo } from '../engine/engine';
+import { isUsableDiceInfo, type DiceInfo } from '../engine/engine';
 import { CompoundEditor } from './CompoundEditor';
 import { cx, DraftText, isNumericDraft } from './Field';
 import { ResultCard } from './ResultCard';
@@ -17,7 +17,7 @@ function numOr0(value: string): number {
 }
 
 function rollInfoText(info: DiceInfo, roll: string): { text: string; error: boolean } {
-  if (!info.ok) return { text: 'unparseable dice expression', error: true };
+  if (!isUsableDiceInfo(info)) return { text: 'unparseable dice expression', error: true };
   const outcomes = info.outcomes ?? 0;
   const plural = outcomes === 1 ? '' : 's';
   if (info.kind === 'digit') {
@@ -65,17 +65,18 @@ export function TableEditor() {
 
   const info = current.type === 'simple' ? engine.diceInfo(current.roll) : { ok: false };
   const rollInfo = current.type === 'simple' ? rollInfoText(info, current.roll) : null;
-  const digitKind = info.ok && info.kind === 'digit';
+  const usableInfo = isUsableDiceInfo(info);
+  const digitKind = usableInfo && info.kind === 'digit';
   const modActive = current.modOn && !digitKind;
   const effSpan =
-    modActive && info.ok
+    modActive && usableInfo
       ? `${(info.min ?? 0) + numOr0(current.modMin)}–${(info.max ?? 0) + numOr0(current.modMax)}`
       : '';
   const expectedValues =
-    current.type === 'simple'
+    current.type === 'simple' && usableInfo
       ? engine.expectedValues(current.roll, modActive, numOr0(current.modMin), numOr0(current.modMax))
       : null;
-  const dist = current.type === 'simple' ? engine.histogram(current.roll) : null;
+  const dist = current.type === 'simple' && usableInfo ? engine.histogram(current.roll) : null;
 
   function handleAutoFill() {
     if (expectedValues === null) return;
@@ -193,11 +194,16 @@ export function TableEditor() {
                   'table-editor-roll-input',
                   rollInfo.error && 'field-input--invalid',
                 )}
+                aria-describedby={`roll-info-${current.uid}`}
+                aria-invalid={rollInfo.error}
                 value={current.roll}
                 onChange={(e) => patch({ roll: e.target.value })}
               />
             </label>
-            <div className={cx('table-editor-roll-info', rollInfo.error && 'table-editor-roll-info--error')}>
+            <div
+              id={`roll-info-${current.uid}`}
+              className={cx('table-editor-roll-info', rollInfo.error && 'table-editor-roll-info--error')}
+            >
               {rollInfo.text}
             </div>
           </div>
