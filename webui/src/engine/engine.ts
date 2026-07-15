@@ -12,6 +12,17 @@ export interface DiceInfo {
   reason?: string;
 }
 
+export function isUsableDiceInfo(info: DiceInfo): boolean {
+  return (
+    info.ok &&
+    Number.isFinite(info.min) &&
+    Number.isFinite(info.max) &&
+    Number.isFinite(info.outcomes) &&
+    info.min! <= info.max! &&
+    info.outcomes! > 0
+  );
+}
+
 export interface RollNode {
   table_name: string;
   roll: number | null;

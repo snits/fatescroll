@@ -14,7 +14,7 @@ static NAMESPACE_SEGMENT: LazyLock<Regex> =
 /// Maximum span of a simple table's entry envelope (modifier or plain dice).
 /// Bounds the coverage-vec allocation and guards against overflow from absurd
 /// envelope bounds.
-const MAX_ENVELOPE_WIDTH: i64 = 100_000;
+pub const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 
 /// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
 /// wide to allocate a coverage vec for, or whose endpoints fall outside i32.
@@ -22,7 +22,7 @@ const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 /// Callers pass non-overflowing i64 endpoints (i32-derived or non-negative),
 /// so `max - min` cannot overflow.
 /// Callers must pass `min <= max`.
-fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
+pub fn bounded_envelope(min: i64, max: i64) -> Result<(i32, i32), i64> {
     debug_assert!(min <= max, "bounded_envelope requires min <= max");
     let width = max - min;
     if width > MAX_ENVELOPE_WIDTH || min < i32::MIN as i64 || max > i32::MAX as i64 {
@@ -66,6 +66,8 @@ pub fn outcome_envelope(
             (d_min as i64 + mr.min as i64, d_max as i64 + mr.max as i64)
         }
         None => {
+            let parsed = diceman::parse(roll).map_err(|e| EnvelopeError::Dice(e.into()))?;
+            crate::dice::validate_dice_counts(&parsed).map_err(EnvelopeError::Dice)?;
             let sim = diceman::simulate_seeded(roll, 100_000, 42)
                 .map_err(|e| EnvelopeError::Dice(e.into()))?;
             if sim.min < 0 || sim.max < 0 {
@@ -186,6 +188,13 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                     expr: roll.clone(),
                     reason: e.to_string(),
                 })?;
+            crate::dice::validate_dice_counts(&parsed).map_err(|e| {
+                ValidationError::InvalidDiceExpression {
+                    table: name.clone(),
+                    expr: roll.clone(),
+                    reason: e.to_string(),
+                }
+            })?;
             for entry in results {
                 validate_result_entry(entry, name)?;
             }
@@ -587,6 +596,29 @@ mod tests {
     }
 
     #[test]
+    fn simple_table_rejects_zero_dice() {
+        let table = Table::Simple {
+            id: "zero-dice".into(),
+            name: "ZeroDice".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "0d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 0,
+                max: 0,
+                text: Some("X".into()),
+                chain: None,
+            }],
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::error::ValidationError::InvalidDiceExpression { .. }
+        ));
+    }
+
+    #[test]
     fn entry_below_dice_min() {
         let table = Table::Simple {
             id: "below".into(),
@@ -749,7 +781,7 @@ mod tests {
             name: "D66 Full".into(),
             tags: vec![],
             notes: vec![],
-            roll: "D66".into(),
+            roll: "(D66)".into(),
             modifier_range: None,
             results,
         };

@@ -238,6 +238,63 @@ describe('TableEditor roll info', () => {
     expect(screen.getByText('unparseable dice expression')).toBeTruthy();
     expect(screen.getByLabelText(/^Roll$/).className).toContain('field-input--invalid');
   });
+
+  it('does not calculate derived dice data for invalid roll metadata', () => {
+    const expectedValues = vi.fn(() => {
+      throw new Error('expectedValues must not run');
+    });
+    const histogram = vi.fn(() => {
+      throw new Error('histogram must not run');
+    });
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [makeTable({ roll: '1d0' })],
+      selUid: 'table-1',
+      view: 'table',
+    });
+
+    renderEditor(
+      makeEngine({
+        diceInfo: () => ({ ok: false, reason: 'Invalid die kind: 0' }),
+        expectedValues,
+        histogram,
+      }),
+    );
+
+    const rollInput = screen.getByLabelText(/^Roll$/);
+    expect(rollInput.className).toContain('field-input--invalid');
+    expect(rollInput.getAttribute('aria-invalid')).toBe('true');
+    expect(rollInput.getAttribute('aria-describedby')).toBeTruthy();
+    expect(expectedValues).not.toHaveBeenCalled();
+    expect(histogram).not.toHaveBeenCalled();
+  });
+
+  it('treats reversed or empty dice metadata as invalid', () => {
+    const expectedValues = vi.fn(() => {
+      throw new Error('expectedValues must not run');
+    });
+    const histogram = vi.fn(() => {
+      throw new Error('histogram must not run');
+    });
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [makeTable({ roll: '1d6' })],
+      selUid: 'table-1',
+      view: 'table',
+    });
+
+    renderEditor(
+      makeEngine({
+        diceInfo: () => ({ ok: true, kind: 'range', min: 6, max: 1, outcomes: 0 }),
+        expectedValues,
+        histogram,
+      }),
+    );
+
+    expect(screen.getByText('unparseable dice expression')).toBeTruthy();
+    expect(expectedValues).not.toHaveBeenCalled();
+    expect(histogram).not.toHaveBeenCalled();
+  });
 });
 
 describe('TableEditor modifier range', () => {
