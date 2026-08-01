@@ -4,7 +4,8 @@
 use fatescroll_core::collection::CollectionFile;
 use fatescroll_core::models::{Manifest, ModifierRange, Table};
 use fatescroll_core::validator::{
-    EnvelopeError, bounded_envelope, outcome_envelope, validate_references,
+    EnvelopeError, SIMULATION_ITERATIONS, SIMULATION_SEED, bounded_envelope, outcome_envelope,
+    validate_references,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -167,7 +168,7 @@ pub fn histogram(expr: &str) -> String {
     if let Err(e) = outcome_envelope(expr, None) {
         return json!({ "ok": false, "reason": envelope_reason(e) }).to_string();
     }
-    match diceman::simulate_seeded(expr, 100_000, 42) {
+    match diceman::simulate_seeded(expr, SIMULATION_ITERATIONS, SIMULATION_SEED) {
         Ok(sim) => {
             let n = sim.n as f64;
             let outcomes: Vec<(i64, f64)> = sim

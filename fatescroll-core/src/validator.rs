@@ -16,6 +16,14 @@ static NAMESPACE_SEGMENT: LazyLock<Regex> =
 /// envelope bounds.
 pub const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 
+/// Sample count and RNG seed for [`diceman::simulate_seeded`] calls that
+/// derive a dice expression's outcome envelope. Shared between
+/// `outcome_envelope`'s no-modifier path and fatescroll-wasm's `histogram`
+/// so both simulate the same expression identically -- validator and
+/// browser output can't drift apart from mismatched sample counts or seeds.
+pub const SIMULATION_ITERATIONS: usize = 100_000;
+pub const SIMULATION_SEED: u64 = 42;
+
 /// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
 /// wide to allocate a coverage vec for, or whose endpoints fall outside i32.
 /// On rejection returns the offending `width` (`Err`) for the caller's error.
@@ -68,7 +76,7 @@ pub fn outcome_envelope(
         None => {
             let parsed = diceman::parse(roll).map_err(|e| EnvelopeError::Dice(e.into()))?;
             crate::dice::validate_dice_counts(&parsed).map_err(EnvelopeError::Dice)?;
-            let sim = diceman::simulate_seeded(roll, 100_000, 42)
+            let sim = diceman::simulate_seeded(roll, SIMULATION_ITERATIONS, SIMULATION_SEED)
                 .map_err(|e| EnvelopeError::Dice(e.into()))?;
             if sim.min < 0 || sim.max < 0 {
                 return Err(EnvelopeError::NegativeValues {
