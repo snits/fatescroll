@@ -88,7 +88,9 @@ Top-level `Error` enum wraps `ValidationError`, `LoadError`, `RollError`, `serde
 - All `.rs` files must start with two `// ABOUTME:` comment lines describing the file's purpose.
 - Table `id` must match the filename stem (enforced by loader as `IdFilenameMismatch` error).
 - Namespace format: lowercase dot-separated, validated by `validate_namespace()` in `validator.rs`.
-- Generated YAML from `init` omits the `id` field — the loader derives it from the filename.
+- `id` is a required field with no serde default — the loader does not derive it from the
+  filename, it only validates that a present `id` matches the filename stem. Generated YAML
+  from `init` omits `id`, so it must be added by hand before the table can load.
 - `git commit -s` required (sign-off). Feature branches required — never commit to main.
 
 ## PROJECT SCALE CONTEXT
