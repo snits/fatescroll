@@ -292,12 +292,74 @@ files:
     }
 
     #[test]
-    fn skips_non_yaml_files() {
-        let manifest_path = fixtures_path("valid-collection/manifest.yaml");
-        let (_manifest, files, _) = discover_collection_files(&manifest_path).unwrap();
-        for f in &files {
-            let ext = f.path.extension().and_then(|e| e.to_str()).unwrap();
-            assert!(ext == "yaml" || ext == "yml", "unexpected ext: {}", ext);
-        }
+    fn discovers_only_yaml_and_yml_files_in_directories() {
+        // The shared valid-collection fixture contains only .yaml files, so a
+        // test that loads it and checks the extensions of whatever came back
+        // can't distinguish the skip branch working from it being deleted.
+        // Build a directory with files the skip branch must actually reject.
+        let dir = tempfile::TempDir::new().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("good.yaml"), "id: good\n").unwrap();
+        std::fs::write(sub.join("other.yml"), "id: other\n").unwrap();
+        std::fs::write(sub.join("notes.txt"), "not yaml").unwrap();
+        std::fs::write(sub.join("readme.md"), "# not yaml").unwrap();
+        std::fs::write(sub.join("manifest.yaml"), "id: should-be-skipped\n").unwrap();
+        std::fs::write(sub.join("foo.manifest.yaml"), "id: should-be-skipped\n").unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+directories:
+  - path: sub
+    namespace: t.sub
+"#;
+        std::fs::write(dir.path().join("manifest.yaml"), manifest).unwrap();
+        let (_m, files, errors) =
+            discover_collection_files(&dir.path().join("manifest.yaml")).unwrap();
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        let mut stems: Vec<&str> = files.iter().map(|f| f.stem.as_str()).collect();
+        stems.sort_unstable();
+        assert_eq!(
+            stems,
+            vec!["good", "other"],
+            "expected only the two yaml/yml files to be discovered"
+        );
+    }
+
+    #[test]
+    fn discover_collection_files_skips_manifest_named_entries_in_files_list() {
+        // Same manifest-exclusion predicate as the directory walk, but on the
+        // `files:` entries path (collection.rs:139-141): a files: entry
+        // pointing at something literally named manifest.yaml, or ending in
+        // .manifest.yaml, must be silently skipped rather than loaded.
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("good.yaml"), "id: good\n").unwrap();
+        std::fs::write(dir.path().join("manifest.yaml"), "id: should-be-skipped\n").unwrap();
+        std::fs::write(
+            dir.path().join("foo.manifest.yaml"),
+            "id: should-be-skipped\n",
+        )
+        .unwrap();
+        let manifest = r#"name: T
+version: "1.0"
+namespace: t
+files:
+  - path: good.yaml
+    namespace: t.a
+  - path: manifest.yaml
+    namespace: t.b
+  - path: foo.manifest.yaml
+    namespace: t.c
+"#;
+        std::fs::write(dir.path().join("root.yaml"), manifest).unwrap();
+        let (_m, files, errors) = discover_collection_files(&dir.path().join("root.yaml")).unwrap();
+        assert!(errors.is_empty(), "unexpected errors: {:?}", errors);
+        assert_eq!(
+            files.len(),
+            1,
+            "expected only good.yaml, got {:?}",
+            files.iter().map(|f| f.stem.as_str()).collect::<Vec<_>>()
+        );
+        assert_eq!(files[0].stem, "good");
     }
 }
