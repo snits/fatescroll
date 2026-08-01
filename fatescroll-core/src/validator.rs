@@ -100,10 +100,13 @@ fn envelope_error_to_validation(
             min,
             max,
         },
-        // The only caller (validate_table) parses `expr` itself before ever
-        // reaching outcome_envelope, so dice_range's own internal reparse
-        // below can never fail regardless of has_modifier -- d.to_string()
-        // (bare diceman message) applies uniformly.
+        // The has_modifier=true path reaches this via dice_range, whose own
+        // internal reparse of the already-validated `expr` (see
+        // validate_table's pre-parse) can't fail -- Error::Dice is
+        // unreachable there. The has_modifier=false path reaches it via
+        // simulate_seeded, which remains a real, reachable Error::Dice
+        // source; d.to_string() was always the correct bare message on that
+        // side.
         EnvelopeError::Dice(e) => match e {
             Error::Validation(v) => v,
             Error::Dice(d) => ValidationError::InvalidDiceExpression {
@@ -186,6 +189,11 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
             modifier_range,
             ..
         } => {
+            // This early parse is load-bearing beyond its own error message:
+            // envelope_error_to_validation's Error::Dice handling assumes
+            // `roll` is already known-parseable by the time outcome_envelope
+            // (and dice_range's own reparse) run. Don't remove or reorder it
+            // without re-checking that assumption there.
             let parsed =
                 diceman::parse(roll).map_err(|e| ValidationError::InvalidDiceExpression {
                     table: name.clone(),
