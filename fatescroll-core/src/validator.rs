@@ -458,17 +458,35 @@ mod tests {
 
     #[test]
     fn invalid_namespace_starts_with_digit() {
-        assert!(validate_namespace("2e-dmg").is_err());
+        let err = validate_namespace("2e-dmg").unwrap_err();
+        match err {
+            ValidationError::InvalidNamespace { reason, .. } => {
+                assert_eq!(reason, "segment '2e-dmg' must match [a-z][a-z0-9_-]*")
+            }
+            other => panic!("expected InvalidNamespace, got {other:?}"),
+        }
     }
 
     #[test]
     fn invalid_namespace_uppercase() {
-        assert!(validate_namespace("DMG").is_err());
+        let err = validate_namespace("DMG").unwrap_err();
+        match err {
+            ValidationError::InvalidNamespace { reason, .. } => {
+                assert_eq!(reason, "segment 'DMG' must match [a-z][a-z0-9_-]*")
+            }
+            other => panic!("expected InvalidNamespace, got {other:?}"),
+        }
     }
 
     #[test]
     fn invalid_namespace_empty_segment() {
-        assert!(validate_namespace("dmg..treasure").is_err());
+        let err = validate_namespace("dmg..treasure").unwrap_err();
+        match err {
+            ValidationError::InvalidNamespace { reason, .. } => {
+                assert_eq!(reason, "empty segment (double dot)")
+            }
+            other => panic!("expected InvalidNamespace, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1130,7 +1148,14 @@ mod tests {
                 chain: None,
             }],
         };
-        assert!(validate_table(&table).is_err());
+        let err = validate_table(&table).unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                ValidationError::UnsupportedDiceExpression { reason, .. } if reason == "dice modifiers"
+            ),
+            "expected UnsupportedDiceExpression with reason 'dice modifiers', got: {err:?}"
+        );
     }
     #[test]
     fn absurd_modifier_range_errors_not_panics() {

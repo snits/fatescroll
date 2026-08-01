@@ -386,22 +386,34 @@ mod tests {
         assert_eq!(grouped_d66["kind"].as_str(), Some("digit"));
         let bad: serde_json::Value = serde_json::from_str(&dice_info("not dice")).unwrap();
         assert_eq!(bad["ok"].as_bool(), Some(false));
-        assert!(bad["reason"].is_string());
+        assert!(
+            bad["reason"]
+                .as_str()
+                .unwrap()
+                .contains("Unexpected character")
+        );
     }
 
     #[test]
     fn dice_info_rejects_invalid_table_envelopes() {
-        for expr in [
-            "0d6",
-            "1d0",
-            "1d6 - 3",
-            "1d100000+2147483647",
-            "1d4294967295",
-            "2d4294967295",
+        // Each expression fails for a structurally different reason; the
+        // expected substring pins that the reported reason actually matches
+        // its own failure rather than all six collapsing to one message.
+        for (expr, expected_reason_substr) in [
+            ("0d6", "zero dice"),
+            ("1d0", "Invalid die kind"),
+            ("1d6 - 3", "negative values"),
+            ("1d100000+2147483647", "width 99999"),
+            ("1d4294967295", "width 4294967294"),
+            ("2d4294967295", "envelope too wide"),
         ] {
             let info: serde_json::Value = serde_json::from_str(&dice_info(expr)).unwrap();
             assert_eq!(info["ok"].as_bool(), Some(false), "{expr}: {info}");
-            assert!(info["reason"].is_string(), "{expr}: {info}");
+            let reason = info["reason"].as_str().unwrap();
+            assert!(
+                reason.contains(expected_reason_substr),
+                "{expr}: expected reason to contain {expected_reason_substr:?}, got {reason:?}"
+            );
         }
     }
 
@@ -450,10 +462,18 @@ mod tests {
 
     #[test]
     fn histogram_rejects_invalid_table_envelopes() {
-        for expr in ["0d6", "1d6 - 3", "1d4294967295"] {
+        for (expr, expected_reason_substr) in [
+            ("0d6", "zero dice"),
+            ("1d6 - 3", "negative values"),
+            ("1d4294967295", "envelope too wide"),
+        ] {
             let info: serde_json::Value = serde_json::from_str(&histogram(expr)).unwrap();
             assert_eq!(info["ok"].as_bool(), Some(false), "{expr}: {info}");
-            assert!(info["reason"].is_string(), "{expr}: {info}");
+            let reason = info["reason"].as_str().unwrap();
+            assert!(
+                reason.contains(expected_reason_substr),
+                "{expr}: expected reason to contain {expected_reason_substr:?}, got {reason:?}"
+            );
         }
     }
 
@@ -528,7 +548,7 @@ mod tests {
         let out: serde_json::Value =
             serde_json::from_str(&roll_collection(MANIFEST, &files_json(), "t.core.nope", 7))
                 .unwrap();
-        assert!(out["error"].is_string());
+        assert!(out["error"].as_str().unwrap().contains("t.core.nope"));
     }
 
     const OPEN_MANIFEST: &str = "name: T\nversion: \"1.0\"\nnamespace: t\nauthor: ~\nmin_tool_version: ~\ndirectories:\n  - path: core/\n    namespace: t.core\n  - path: core/deep\n    namespace: t.core.deep\n";
