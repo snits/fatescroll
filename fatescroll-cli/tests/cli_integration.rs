@@ -1364,7 +1364,7 @@ fn roll_child_result_is_indented_by_one_level() {
         .find(|l| l.contains("Animal Type"))
         .unwrap_or_else(|| panic!("no Animal Type line in: {stdout}"));
     assert!(
-        child_line.starts_with("  ") && !child_line.starts_with("   "),
+        child_line.starts_with("  Animal Type"),
         "expected child line indented by exactly 2 spaces, got: {child_line:?}"
     );
 }
