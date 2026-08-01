@@ -163,23 +163,61 @@ mod tests {
 
     #[test]
     fn dice_range_invalid_expression() {
-        assert!(dice_range("1z6").is_err());
+        let err = dice_range("1z6").unwrap_err();
+        assert!(
+            err.to_string().contains("Unexpected character"),
+            "got: {err}"
+        );
     }
 
     #[test]
-    fn dice_range_rejects_zero_sided_die() {
-        assert!(dice_range("1d0").is_err());
+    fn dice_range_rejects_zero_sided_die_via_diceman() {
+        // "1d0" is rejected by diceman's own parser (Error::InvalidDieKind)
+        // before validate_dice_counts ever runs -- that function only checks
+        // for zero *dice* (pool.count == 0), not zero *sides*. This test
+        // pins diceman's behavior, not fatescroll's own validation; a future
+        // diceman release that accepted d0 would need a guard added here.
+        let err = dice_range("1d0").unwrap_err();
+        assert!(err.to_string().contains("Invalid die kind"), "got: {err}");
     }
 
     #[test]
     fn dice_range_rejects_zero_dice() {
-        assert!(dice_range("0d6").is_err());
+        let err = dice_range("0d6").unwrap_err();
+        assert!(err.to_string().contains("contains zero dice"), "got: {err}");
     }
 
     #[test]
     fn dice_range_rejects_an_overflowing_outcome_range() {
-        assert!(dice_range("2d4294967295").is_err());
-        assert!(dice_range("1d4294967295+1").is_err());
+        let err = dice_range("2d4294967295").unwrap_err();
+        assert!(
+            err.to_string().contains("outcome range overflows u32"),
+            "got: {err}"
+        );
+        let err = dice_range("1d4294967295+1").unwrap_err();
+        assert!(
+            err.to_string().contains("outcome range exceeds u32"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_rejects_expression_producing_negative_range() {
+        // Exercises the min < 0 || max < 0 guard for a Sub expression whose
+        // whole range is negative (min=-3, max=2 for 1d6-4), distinct from
+        // the boundary case below where max lands exactly on 0.
+        let err = dice_range("1d6-4").unwrap_err();
+        assert!(
+            err.to_string().contains("produces negative values"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn dice_range_accepts_range_touching_zero() {
+        // 1d1-1 always evaluates to exactly 0 (min == max == 0): the exact
+        // boundary where `max < 0` must not trigger.
+        assert_eq!(dice_range("1d1-1").unwrap(), (0, 0));
     }
 
     #[test]
