@@ -767,6 +767,24 @@ fn init_bell_too_few_entries() {
 }
 
 #[test]
+fn init_bell_exactly_three_entries_succeeds() {
+    // 3 is the minimum accepted entry count for a bell distribution -- one
+    // more than init_bell_too_few_entries' rejected case above.
+    let output = fatescroll_bin()
+        .args(["init", "--entries", "3", "--distribution", "bell"])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("roll: 2d2"));
+    assert_eq!(stdout.matches("  - min:").count(), 3);
+}
+
+#[test]
 fn init_output_to_file() {
     let dir = TempDir::new().unwrap();
     let output_file = dir.path().join("test-table.yaml");
@@ -1317,6 +1335,38 @@ fn roll_with_value_resolves_chain() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Animal encounter"), "got: {stdout}");
     assert!(stdout.contains("Animal Type"), "got: {stdout}");
+}
+
+#[test]
+fn roll_child_result_is_indented_by_one_level() {
+    // Same chain as roll_with_value_resolves_chain, but checking the child
+    // line's exact indentation rather than just its presence -- the child's
+    // depth (1) must actually shift its indent from the root's (0).
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+            "--value",
+            "1",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let child_line = stdout
+        .lines()
+        .find(|l| l.contains("Animal Type"))
+        .unwrap_or_else(|| panic!("no Animal Type line in: {stdout}"));
+    assert!(
+        child_line.starts_with("  ") && !child_line.starts_with("   "),
+        "expected child line indented by exactly 2 spaces, got: {child_line:?}"
+    );
 }
 
 #[test]

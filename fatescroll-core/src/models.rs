@@ -433,6 +433,24 @@ table: some-table
     }
 
     #[test]
+    fn display_modified_chain_ref_without_reroll_omits_suffix() {
+        let chain_ref = ChainRef::Modified {
+            table: "some-table".into(),
+            reroll: vec![],
+        };
+        assert_eq!(chain_ref.to_string(), "some-table");
+    }
+
+    #[test]
+    fn display_modified_chain_ref_with_reroll_shows_suffix() {
+        let chain_ref = ChainRef::Modified {
+            table: "some-table".into(),
+            reroll: vec![1, 2],
+        };
+        assert_eq!(chain_ref.to_string(), "some-table (reroll [1, 2])");
+    }
+
+    #[test]
     fn deserialize_mixed_chain_list() {
         let yaml = r#"
 - animal-type

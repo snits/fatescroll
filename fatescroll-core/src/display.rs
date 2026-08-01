@@ -437,4 +437,53 @@ mod tests {
         let output = format_table("ns.quick-npc", &table, true);
         assert!(!output.contains("Notes:"));
     }
+
+    #[test]
+    fn range_width_uses_single_value_length_when_min_equals_max() {
+        // A single min==max entry must size the range column from "100" (3
+        // chars), not the min==max branch's ranged-format alternative
+        // "100-100" (7 chars) -- an exact-line check catches the extra
+        // padding a wrong width would introduce; `contains` would not, since
+        // right-aligned padding just shifts the same substring rightward.
+        let table = Table::Simple {
+            id: "t".into(),
+            name: "T".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d100".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 100,
+                max: 100,
+                text: Some("x".into()),
+                chain: None,
+            }],
+        };
+        let output = format_table("ns.t", &table, false);
+        let line = output.lines().find(|l| l.contains('x')).unwrap();
+        assert_eq!(line, "  100  x");
+    }
+
+    #[test]
+    fn chain_arrow_is_omitted_for_an_empty_chain_vec() {
+        // `chain: Some(vec![])` (present but empty) must render the same as
+        // `chain: None` -- no " → " suffix.
+        let table = Table::Simple {
+            id: "t".into(),
+            name: "T".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d4".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 1,
+                text: Some("x".into()),
+                chain: Some(vec![]),
+            }],
+        };
+        let output = format_table("ns.t", &table, false);
+        let line = output.lines().find(|l| l.contains('x')).unwrap();
+        assert_eq!(line, "  1  x");
+    }
 }
