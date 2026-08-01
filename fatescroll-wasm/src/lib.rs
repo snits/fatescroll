@@ -401,6 +401,9 @@ mod tests {
         // its own failure rather than all six collapsing to one message.
         for (expr, expected_reason_substr) in [
             ("0d6", "zero dice"),
+            // "Invalid die kind" is diceman's own Display text, not ours; a
+            // diceman wording change breaks this case without a fatescroll
+            // regression, but the failure would still be correctly loud.
             ("1d0", "Invalid die kind"),
             ("1d6 - 3", "negative values"),
             ("1d100000+2147483647", "width 99999"),
