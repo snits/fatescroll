@@ -86,8 +86,8 @@ pub fn outcome_envelope(
 }
 
 /// Map an [`EnvelopeError`] to the [`ValidationError`] `validate_table`
-/// reports for it. `has_modifier` selects between the modifier-path and
-/// dice-path variants (too-wide, dice-failure wording).
+/// reports for it. `has_modifier` selects between the modifier-range-too-wide
+/// and dice-range-too-wide variants.
 fn envelope_error_to_validation(
     err: EnvelopeError,
     table: &str,
@@ -100,9 +100,13 @@ fn envelope_error_to_validation(
             min,
             max,
         },
+        // The only caller (validate_table) parses `expr` itself before ever
+        // reaching outcome_envelope, so dice_range's own internal reparse
+        // below can never fail regardless of has_modifier -- d.to_string()
+        // (bare diceman message) applies uniformly.
         EnvelopeError::Dice(e) => match e {
             Error::Validation(v) => v,
-            Error::Dice(d) if !has_modifier => ValidationError::InvalidDiceExpression {
+            Error::Dice(d) => ValidationError::InvalidDiceExpression {
                 table: table.to_string(),
                 expr: expr.to_string(),
                 reason: d.to_string(),
