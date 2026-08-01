@@ -293,10 +293,9 @@ files:
 
     #[test]
     fn discovers_only_yaml_and_yml_files_in_directories() {
-        // The shared valid-collection fixture contains only .yaml files, so a
-        // test that loads it and checks the extensions of whatever came back
-        // can't distinguish the skip branch working from it being deleted.
-        // Build a directory with files the skip branch must actually reject.
+        // The shared valid-collection fixture contains only .yaml files and
+        // has nothing to skip, so this needs an isolated directory that
+        // actually contains files the skip branch must reject.
         let dir = tempfile::TempDir::new().unwrap();
         let sub = dir.path().join("sub");
         std::fs::create_dir(&sub).unwrap();
@@ -327,11 +326,11 @@ directories:
     }
 
     #[test]
-    fn discover_collection_files_skips_manifest_named_entries_in_files_list() {
+    fn files_list_skips_manifest_named_entries() {
         // Same manifest-exclusion predicate as the directory walk, but on the
-        // `files:` entries path (collection.rs:139-141): a files: entry
-        // pointing at something literally named manifest.yaml, or ending in
-        // .manifest.yaml, must be silently skipped rather than loaded.
+        // `files:` entries loop: an entry pointing at something literally
+        // named manifest.yaml, or ending in .manifest.yaml, must be silently
+        // skipped rather than loaded.
         let dir = tempfile::TempDir::new().unwrap();
         std::fs::write(dir.path().join("good.yaml"), "id: good\n").unwrap();
         std::fs::write(dir.path().join("manifest.yaml"), "id: should-be-skipped\n").unwrap();
