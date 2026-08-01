@@ -695,6 +695,11 @@ mod tests {
     fn validate_refs_valid_collection() {
         let manifest_path = fixtures_path("valid-collection/manifest.yaml");
         let registry = crate::loader::load_collection(&manifest_path).unwrap();
+        // Anchor that discovery actually populated the registry, so a
+        // discovery regression fails here instead of vacuously passing on
+        // an empty registry (validate_references loops over all_tables()
+        // and reports no errors when there's nothing to iterate).
+        assert_eq!(registry.all_tables().count(), 12);
         assert!(validate_references(&registry).is_ok());
     }
 
