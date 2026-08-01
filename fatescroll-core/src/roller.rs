@@ -555,6 +555,135 @@ mod tests {
         assert!(matches!(err, RollError::ChainDepthExceeded { .. }));
     }
 
+    /// Builds `length + 1` chained simple tables `chain.t0 -> chain.t1 ->
+    /// ... -> chain.t{length}` (the last has no chain), so rolling `t0`
+    /// reaches exactly `depth == length` at the deepest child.
+    fn build_linear_chain_registry(length: usize) -> Registry {
+        let mut reg = Registry::new();
+        for i in 0..=length {
+            let chain = (i < length).then(|| vec![ChainRef::Simple(format!("t{}", i + 1))]);
+            reg.register(
+                format!("chain.t{i}"),
+                Table::Simple {
+                    id: format!("t{i}"),
+                    name: format!("T{i}"),
+                    tags: vec![],
+                    notes: vec![],
+                    roll: "1d4".into(),
+                    modifier_range: None,
+                    results: vec![ResultEntry {
+                        min: 1,
+                        max: 4,
+                        text: Some(format!("T{i}")),
+                        chain,
+                    }],
+                },
+            )
+            .unwrap();
+        }
+        reg
+    }
+
+    #[test]
+    fn chain_depth_exactly_at_limit_succeeds() {
+        // depth == MAX_CHAIN_DEPTH is the boundary where `depth > MAX_CHAIN_DEPTH`
+        // must stay false; a chain of exactly MAX_CHAIN_DEPTH links reaches
+        // that depth at its deepest child without erroring.
+        let reg = build_linear_chain_registry(MAX_CHAIN_DEPTH);
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "chain.t0", &mut rng).unwrap();
+        let mut depth = 0;
+        let mut node = &result;
+        while let Some(child) = node.children.first() {
+            node = child;
+            depth += 1;
+        }
+        assert_eq!(depth, MAX_CHAIN_DEPTH);
+    }
+
+    #[test]
+    fn chain_depth_one_past_limit_errors() {
+        // One link deeper than the boundary above: the deepest child would
+        // sit at depth == MAX_CHAIN_DEPTH + 1, which must be rejected.
+        let reg = build_linear_chain_registry(MAX_CHAIN_DEPTH + 1);
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "chain.t0", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::ChainDepthExceeded { .. }));
+    }
+
+    #[test]
+    fn compound_nesting_increments_chain_depth() {
+        // Compound recursion has its own depth+1 call site, distinct from
+        // the simple-chain one exercised above. A chain of Compound tables
+        // deeper than MAX_CHAIN_DEPTH, each wrapping the next and ending in
+        // a leaf Simple table, must still hit the depth limit.
+        let mut reg = Registry::new();
+        let depth_levels = MAX_CHAIN_DEPTH + 2;
+        for i in 0..depth_levels {
+            reg.register(
+                format!("compound.c{i}"),
+                Table::Compound {
+                    id: format!("c{i}"),
+                    name: format!("C{i}"),
+                    tags: vec![],
+                    notes: vec![],
+                    tables: vec![format!("c{}", i + 1)],
+                },
+            )
+            .unwrap();
+        }
+        reg.register(
+            format!("compound.c{depth_levels}"),
+            Table::Simple {
+                id: format!("c{depth_levels}"),
+                name: "Leaf".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d4".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Leaf".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+
+        let mut rng = diceman::FastRng::with_seed(42);
+        let err = roll_with_rng(&reg, "compound.c0", &mut rng).unwrap_err();
+        assert!(matches!(err, RollError::ChainDepthExceeded { .. }));
+    }
+
+    #[test]
+    fn roll_zero_result_is_not_negative() {
+        // roll_value == 0 is the boundary where `roll_value < 0` must stay
+        // false; 1d1-1 deterministically evaluates to exactly 0.
+        let mut reg = Registry::new();
+        reg.register(
+            "test.zero".into(),
+            Table::Simple {
+                id: "zero".into(),
+                name: "Zero".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1-1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 0,
+                    max: 0,
+                    text: Some("Zero result".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "test.zero", &mut rng).unwrap();
+        assert_eq!(result.roll, Some(0));
+    }
+
     #[test]
     fn roll_negative_result_errors() {
         let mut reg = Registry::new();
