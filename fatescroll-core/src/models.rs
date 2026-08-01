@@ -75,6 +75,11 @@ impl From<ModifierRange> for [i32; 2] {
     }
 }
 
+// Serializes/deserializes snake_case (e.g. `modifier_range`, tag `type`).
+// This is also the on-disk YAML table format, so a key rename breaks every
+// existing collection file, not just JSON consumers. The one live JSON
+// consumer is Table Forge's webui/src/engine/engine.ts interfaces (ParsedTable
+// et al.), fed via fatescroll-wasm's parse_collection.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type")]
 pub enum Table {
@@ -156,6 +161,10 @@ pub struct Manifest {
     pub base_path: PathBuf,
 }
 
+// Serializes snake_case (`table_name`, etc). Two live JSON consumers parse
+// these keys directly: fatescroll-cli's `roll --json`, and Table Forge's
+// webui/src/engine/engine.ts (RollNode) via fatescroll-wasm's
+// roll_collection. A key rename is a breaking change to both.
 #[derive(Debug, Serialize, Clone)]
 pub struct RollResult {
     pub table_name: String,
