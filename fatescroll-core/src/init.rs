@@ -152,8 +152,34 @@ mod tests {
         match result {
             DistributionResult::Suggestions(suggestions) => {
                 assert!(!suggestions.is_empty());
-                assert!(suggestions.iter().any(|s| s.expression == "2d6"));
-                assert!(suggestions.iter().any(|s| s.expression == "2d7"));
+                let two_d6 = suggestions
+                    .iter()
+                    .find(|s| s.expression == "2d6")
+                    .expect("expected a 2d6 suggestion");
+                assert_eq!(
+                    *two_d6,
+                    Suggestion {
+                        expression: "2d6".to_string(),
+                        num_dice: 2,
+                        entries: 11,
+                        range_min: 2,
+                        range_max: 12,
+                    }
+                );
+                let two_d7 = suggestions
+                    .iter()
+                    .find(|s| s.expression == "2d7")
+                    .expect("expected a 2d7 suggestion");
+                assert_eq!(
+                    *two_d7,
+                    Suggestion {
+                        expression: "2d7".to_string(),
+                        num_dice: 2,
+                        entries: 13,
+                        range_min: 2,
+                        range_max: 14,
+                    }
+                );
             }
             other => panic!("Expected Suggestions, got {:?}", other),
         }
