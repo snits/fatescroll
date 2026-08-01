@@ -433,6 +433,20 @@ mod tests {
     }
 
     #[test]
+    fn outcome_envelope_accepts_equal_modifier_bounds() {
+        // min == max on a modifier range is not reversed (guard is `>`).
+        let mr = ModifierRange { min: 3, max: 3 };
+        assert_eq!(outcome_envelope("1d8", Some(mr)).unwrap(), (4, 11));
+    }
+
+    #[test]
+    fn outcome_envelope_accepts_simulated_range_touching_zero() {
+        // 1d1 - 1 always simulates to exactly 0: the boundary where the
+        // negative-values guard (`< 0`) must not trigger.
+        assert_eq!(outcome_envelope("1d1 - 1", None).unwrap(), (0, 0));
+    }
+
+    #[test]
     fn valid_namespace_single_segment() {
         assert!(validate_namespace("test").is_ok());
     }
@@ -819,6 +833,43 @@ mod tests {
     }
 
     #[test]
+    fn d66_table_with_exact_duplicate_value_is_overlap() {
+        // All 36 valid D66 values, plus one duplicate entry for value 11 —
+        // the coverage count for 11 is exactly 2, the boundary between
+        // "covered once" (not an overlap) and "covered more than once".
+        let values = crate::dice::digit_dice_values(6, 2);
+        let mut results: Vec<ResultEntry> = values
+            .iter()
+            .map(|&v| ResultEntry {
+                min: v as i32,
+                max: v as i32,
+                text: Some(format!("Result {v}")),
+                chain: None,
+            })
+            .collect();
+        results.push(ResultEntry {
+            min: 11,
+            max: 11,
+            text: Some("Duplicate".into()),
+            chain: None,
+        });
+        let table = Table::Simple {
+            id: "d66-overlap".into(),
+            name: "D66 Overlap".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "D66".into(),
+            modifier_range: None,
+            results,
+        };
+        let err = validate_table(&table).unwrap_err();
+        assert!(
+            matches!(err, ValidationError::RangeOverlap { .. }),
+            "Expected RangeOverlap, got: {err:?}"
+        );
+    }
+
+    #[test]
     fn d66_table_entry_outside_valid_range() {
         // Include an entry for value 17 which is not a valid D66 outcome
         let values = crate::dice::digit_dice_values(6, 2);
@@ -994,6 +1045,70 @@ mod tests {
             ValidationError::ModifierUnsupportedForDigitDice { .. }
         ));
     }
+
+    #[test]
+    fn envelope_coverage_detects_gap_at_top_boundary() {
+        // Envelope [2, 5] has 4 values; entries cover only 2..4, leaving the
+        // top of the envelope (5) uncovered. A coverage vec sized one short
+        // (off-by-one in the length arithmetic) would silently drop this gap.
+        let results = vec![ResultEntry {
+            min: 2,
+            max: 4,
+            text: Some("x".into()),
+            chain: None,
+        }];
+        let err = validate_envelope_coverage("t", 2, 5, &results).unwrap_err();
+        match err {
+            ValidationError::RangeGap { missing, .. } => assert_eq!(missing, vec![5]),
+            other => panic!("expected RangeGap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn envelope_coverage_reports_correct_missing_value_with_nonzero_min() {
+        // Envelope [10, 13]; only 11..13 is covered, so the missing value
+        // (index 0 in the coverage vec) must map back to 10, not to the
+        // index itself or the index multiplied by envelope_min.
+        let results = vec![ResultEntry {
+            min: 11,
+            max: 13,
+            text: Some("x".into()),
+            chain: None,
+        }];
+        let err = validate_envelope_coverage("t", 10, 13, &results).unwrap_err();
+        match err {
+            ValidationError::RangeGap { missing, .. } => assert_eq!(missing, vec![10]),
+            other => panic!("expected RangeGap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn envelope_coverage_reports_correct_overlap_value_with_nonzero_min() {
+        // Envelope [10, 13]; value 10 (index 0) is covered by two entries.
+        // The overlapping value reported must map index 0 back to 10.
+        let results = vec![
+            ResultEntry {
+                min: 10,
+                max: 13,
+                text: Some("a".into()),
+                chain: None,
+            },
+            ResultEntry {
+                min: 10,
+                max: 10,
+                text: Some("b".into()),
+                chain: None,
+            },
+        ];
+        let err = validate_envelope_coverage("t", 10, 13, &results).unwrap_err();
+        match err {
+            ValidationError::RangeOverlap { overlapping, .. } => {
+                assert_eq!(overlapping, vec![10])
+            }
+            other => panic!("expected RangeOverlap, got {other:?}"),
+        }
+    }
+
     #[test]
     fn modifier_range_on_complex_expr_errors() {
         let table = Table::Simple {
@@ -1122,5 +1237,30 @@ mod tests {
         // width is small, but max exceeds i32::MAX
         let big = i32::MAX as i64 + 1;
         assert!(bounded_envelope(big - 5, big).is_err());
+    }
+
+    #[test]
+    fn bounded_envelope_width_is_max_minus_min() {
+        // Nonzero min distinguishes `max - min` from `max + min`: with min = 10
+        // the width stays at the cap (accepted) only if the operator is subtraction.
+        let min = 10i64;
+        let max = min + MAX_ENVELOPE_WIDTH;
+        assert_eq!(bounded_envelope(min, max), Ok((10, 100_010)));
+    }
+
+    #[test]
+    fn bounded_envelope_accepts_min_at_i32_min_boundary() {
+        // min == i32::MIN is the exact point where the `min < i32::MIN` guard
+        // must not trigger (only strictly-smaller values are out of range).
+        let min = i32::MIN as i64;
+        assert_eq!(bounded_envelope(min, min + 5), Ok((i32::MIN, i32::MIN + 5)));
+    }
+
+    #[test]
+    fn bounded_envelope_accepts_max_at_i32_max_boundary() {
+        // max == i32::MAX is the exact point where the `max > i32::MAX` guard
+        // must not trigger; width is kept small so the width guard doesn't mask it.
+        let max = i32::MAX as i64;
+        assert_eq!(bounded_envelope(max - 5, max), Ok((i32::MAX - 5, i32::MAX)));
     }
 }
