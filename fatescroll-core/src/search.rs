@@ -192,10 +192,10 @@ mod tests {
         );
     }
 
-    fn make_simple_table(id: &str) -> Table {
+    fn make_simple_table(id: &str, name: &str) -> Table {
         Table::Simple {
             id: id.into(),
-            name: id.into(),
+            name: name.into(),
             tags: vec!["zzz-tag".into()],
             notes: vec![],
             roll: "1d6".into(),
@@ -211,18 +211,20 @@ mod tests {
 
     #[test]
     fn search_results_are_sorted_by_fqid() {
-        // Register 5 tables in a deliberately scrambled order to expose HashMap non-determinism.
-        // The search functions must return them sorted by FQID regardless of insertion order.
+        // Names are the reverse alphabetical order of the FQID suffixes below,
+        // so a search function that accidentally sorted by name instead of
+        // FQID would produce the exact reverse of `expected`, not a
+        // coincidental match.
         let mut reg = Registry::new();
-        reg.register("zzz.echo".into(), make_simple_table("echo"))
+        reg.register("zzz.echo".into(), make_simple_table("echo", "Victor"))
             .unwrap();
-        reg.register("zzz.alpha".into(), make_simple_table("alpha"))
+        reg.register("zzz.alpha".into(), make_simple_table("alpha", "Zed"))
             .unwrap();
-        reg.register("zzz.delta".into(), make_simple_table("delta"))
+        reg.register("zzz.delta".into(), make_simple_table("delta", "Whiskey"))
             .unwrap();
-        reg.register("zzz.bravo".into(), make_simple_table("bravo"))
+        reg.register("zzz.bravo".into(), make_simple_table("bravo", "Yellow"))
             .unwrap();
-        reg.register("zzz.charlie".into(), make_simple_table("charlie"))
+        reg.register("zzz.charlie".into(), make_simple_table("charlie", "Xray"))
             .unwrap();
 
         let expected = vec![
@@ -246,9 +248,8 @@ mod tests {
             .iter()
             .map(|(fqid, _)| *fqid)
             .collect();
-        // search_by_name with empty query matches all tables, but we only have zzz.* here
-        // so the filtered set is the same 5; order must be sorted.
-        // NOTE: build_search_registry tables have no "zzz" namespace, so this reg is isolated.
+        // search_by_name with empty query matches all tables in this registry;
+        // order must still be sorted by FQID.
         assert_eq!(by_name, expected, "search_by_name must be sorted by FQID");
 
         let by_tag: Vec<&str> = search_by_tag(&reg, "zzz-tag")
