@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-diceman = { git = "https://github.com/snits/diceman.git", tag = "v0.6.3" }
+diceman = { git = "https://github.com/snits/diceman.git", tag = "v0.6.4" }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = { package = "yaml_serde", version = "0.10" }
