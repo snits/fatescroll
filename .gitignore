@@ -23,4 +23,3 @@ session-handoff.md
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/
 .kata.local.toml
-supply-chain/
