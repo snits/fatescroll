@@ -95,12 +95,12 @@ If you want reviewers to use random lenses, put the integration in their local s
 
 ## Scripting: Coming Features
 
-FateScroll currently outputs human-readable text only. Two flags are planned that will improve scripting integration:
+FateScroll outputs human-readable text by default. Two flags improve scripting integration:
 
 - `--json` — emit structured output for piping into other tools
-- `--quiet` — suppress table names and metadata, output only the result text
+- `--quiet` — suppress table names and metadata, output only the result text of every roll node, one per line (`--quiet` conflicts with `--json`)
 
-Once these land, integrations like populating a variable in a shell script or feeding output to a formatter will be straightforward. For now, the human-readable output works well enough for the display-and-proceed patterns above.
+With these, integrations like populating a variable in a shell script or feeding output to a formatter are straightforward.
 
 ---
 

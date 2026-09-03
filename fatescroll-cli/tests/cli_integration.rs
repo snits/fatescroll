@@ -1520,3 +1520,82 @@ fn show_without_notes_flag_omits_notes() {
     assert!(!stdout.contains("Notes:"));
     assert!(!stdout.contains("Roll once per watch"));
 }
+
+#[test]
+fn roll_quiet_outputs_only_result_text() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.mishap",
+            "--value",
+            "4",
+            "--quiet",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "Hair turns white\n");
+}
+
+#[test]
+fn roll_quiet_emits_every_node_text_for_chains() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.encounters.wilderness-encounter",
+            "--value",
+            "8",
+            "--quiet",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    // Root text (inline dice evaluated) plus the chained merchant-goods text.
+    assert_eq!(lines.len(), 2, "got: {stdout}");
+    assert!(
+        lines[0].starts_with("Merchant with ") && lines[0].ends_with(" gold"),
+        "got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("rolled")
+            && !stdout.contains("Wilderness Encounter")
+            && !stdout.contains("Merchant Goods"),
+        "quiet output must not contain names or roll metadata, got: {stdout}"
+    );
+}
+
+#[test]
+fn roll_quiet_conflicts_with_json() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("valid-collection").to_string_lossy(),
+            "test.terrain.wilderness",
+            "--quiet",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot be used with"),
+        "expected a clap conflict error, got: {stderr}"
+    );
+}

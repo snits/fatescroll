@@ -43,6 +43,9 @@ enum Commands {
         /// Print the result as JSON instead of the human-readable tree
         #[arg(long)]
         json: bool,
+        /// Print only the result text of every roll node, one per line
+        #[arg(long, conflicts_with = "json")]
+        quiet: bool,
         /// Look up a value directly instead of rolling dice (skips the roll, then
         /// runs the rest of the pipeline). Out-of-range values error rather than
         /// clamp; not valid for compound tables
@@ -204,9 +207,10 @@ fn main() {
             table_id,
             modifier,
             json,
+            quiet,
             value,
         } => resolve_collection(collection)
-            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, value, json)),
+            .and_then(|collection| cmd_roll(&collection, &table_id, modifier, value, json, quiet)),
         Commands::Search {
             collection,
             name,
@@ -332,6 +336,7 @@ fn cmd_roll(
     modifier: Option<i32>,
     value: Option<i32>,
     json: bool,
+    quiet: bool,
 ) -> Result<(), fatescroll_core::Error> {
     let registry = fatescroll_core::load_collection(collection)?;
     // clap guarantees --value and --modifier are mutually exclusive.
@@ -339,8 +344,11 @@ fn cmd_roll(
         Some(value) => fatescroll_core::roller::roll_with_value(&registry, table_id, value)?,
         None => fatescroll_core::roller::roll_with_modifier(&registry, table_id, modifier)?,
     };
+    // clap guarantees --quiet and --json are mutually exclusive.
     if json {
         print_json(&result)?;
+    } else if quiet {
+        print_quiet_result(&result);
     } else {
         print_roll_result(&result, 0);
     }
@@ -390,6 +398,15 @@ fn print_roll_result(result: &fatescroll_core::RollResult, indent: usize) {
     }
     for child in &result.children {
         print_roll_result(child, indent + 1);
+    }
+}
+
+fn print_quiet_result(result: &fatescroll_core::RollResult) {
+    if let Some(text) = &result.text {
+        println!("{text}");
+    }
+    for child in &result.children {
+        print_quiet_result(child);
     }
 }
 
