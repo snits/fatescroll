@@ -1565,7 +1565,8 @@ fn roll_quiet_emits_every_node_text_for_chains() {
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    // Root text (inline dice evaluated) plus the chained merchant-goods text.
+    // Root text (printed raw, inline dice unsubstituted) plus the chained
+    // merchant-goods text.
     assert_eq!(lines.len(), 2, "got: {stdout}");
     assert!(
         lines[0].starts_with("Merchant with ") && lines[0].ends_with(" gold"),
