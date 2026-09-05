@@ -364,7 +364,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ExpressionError> {
     let mut tokens = Vec::new();
     let mut i = 0;
     while i < bytes.len() {
-        let c = bytes[i] as char;
+        let c = source[i..].chars().next().unwrap();
         if c.is_ascii_whitespace() {
             i += 1;
             continue;
@@ -457,7 +457,7 @@ fn tokenize(source: &str) -> Result<Vec<Token>, ExpressionError> {
             continue;
         }
         let two = if i + 1 < bytes.len() {
-            Some(&source[i..i + 2])
+            source.get(i..i + 2)
         } else {
             None
         };
@@ -1039,6 +1039,19 @@ mod tests {
         }
         let expr = parse("value != 3").unwrap();
         assert_eq!(check(&expr, &scope, false).unwrap(), ValueType::Boolean);
+    }
+
+    #[test]
+    fn expression_rejects_non_ascii_outside_strings_without_panicking() {
+        let error = parse("€").unwrap_err();
+        assert_eq!(error.offset, 0);
+        assert!(error.reason.contains('€'), "got: {}", error.reason);
+        let error = parse("a€b").unwrap_err();
+        assert_eq!(error.offset, 1);
+        assert!(error.reason.contains('€'), "got: {}", error.reason);
+        let error = parse("héllo").unwrap_err();
+        assert_eq!(error.offset, 1);
+        assert!(error.reason.contains('é'), "got: {}", error.reason);
     }
 
     #[test]
