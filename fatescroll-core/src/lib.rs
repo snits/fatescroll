@@ -17,6 +17,9 @@ pub mod validator;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
+#[cfg(test)]
+mod expression;
+
 use std::path::Path;
 
 pub use error::Error;
