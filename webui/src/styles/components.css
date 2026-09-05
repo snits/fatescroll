@@ -802,7 +802,8 @@
   border-left: 2px dotted var(--chain-border);
 }
 
-.result-card-add-chain {
+.result-card-add-chain,
+.result-card-add-value {
   cursor: pointer;
   padding: 3px 10px;
   border: 1px dashed var(--border-dashed);
@@ -812,26 +813,30 @@
   font-size: 11px;
 }
 
-.result-card-add-chain:hover {
+.result-card-add-chain:hover,
+.result-card-add-value:hover {
   background: var(--bg-panel);
 }
 
 /* Chain row */
 
-.chain-row {
+.chain-row,
+.binding-row {
   display: flex;
   align-items: center;
   gap: 7px;
   margin-bottom: 6px;
 }
 
-.chain-row-glyph {
+.chain-row-glyph,
+.binding-row-glyph {
   color: var(--text-faint);
   font-family: var(--font-mono);
   font-size: 12px;
 }
 
-.chain-row-ref {
+.chain-row-ref,
+.binding-row-expression {
   flex: 1;
   padding: 5px 9px;
   font-size: 13px;
@@ -872,7 +877,8 @@
   color: var(--ox-on);
 }
 
-.chain-row-remove {
+.chain-row-remove,
+.binding-row-remove {
   cursor: pointer;
   width: 24px;
   height: 24px;
@@ -883,7 +889,8 @@
   font-size: 12px;
 }
 
-.chain-row-remove:hover {
+.chain-row-remove:hover,
+.binding-row-remove:hover {
   background: var(--err-bg);
 }
 
@@ -913,27 +920,8 @@
   color: var(--text-faint);
 }
 
-.binding-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-bottom: 6px;
-}
-
-.binding-row-glyph {
-  color: var(--text-faint);
-  font-family: var(--font-mono);
-  font-size: 12px;
-}
-
 .binding-row-name {
   width: 110px;
-  padding: 5px 9px;
-  font-size: 13px;
-}
-
-.binding-row-expression {
-  flex: 1;
   padding: 5px 9px;
   font-size: 13px;
 }
@@ -952,35 +940,6 @@
 .binding-row-move:disabled {
   cursor: default;
   opacity: 0.35;
-}
-
-.binding-row-remove {
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--border-card);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--err-2);
-  font-size: 12px;
-}
-
-.binding-row-remove:hover {
-  background: var(--err-bg);
-}
-
-.result-card-add-value {
-  cursor: pointer;
-  padding: 3px 10px;
-  border: 1px dashed var(--border-dashed);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.result-card-add-value:hover {
-  background: var(--bg-panel);
 }
 
 /* Compound editor */

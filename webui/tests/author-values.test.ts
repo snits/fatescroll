@@ -70,6 +70,17 @@ function validateDrafts(state: LoadedState): string[] {
   return engine.validate(manifestYaml(state.manifest, state.dirs), collectionFiles(state.dirs, state.tables));
 }
 
+/** Export drafts to a temp collection and reopen them through the real import pipeline. */
+function exportAndReopen(state: LoadedState, prefix: string): { tmp: string; redrafts: LoadedState } {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  tmpDirs.push(tmp);
+  writeCollection(tmp, manifestYaml(state.manifest, state.dirs), collectionFiles(state.dirs, state.tables));
+  const reopenedRaw = ingest(readCollectionEntries(tmp));
+  const reopened = engine.parseCollection(reopenedRaw.manifestYaml, reopenedRaw.files);
+  if (!reopened.ok) throw new Error(`reopen failed: ${reopened.errors.join('; ')}`);
+  return { tmp, redrafts: mapDrafts(reopened.collection) };
+}
+
 describe('author-values diagnostics', () => {
   test('reordering price above count fails validation; restoring order clears it', () => {
     const state = importFixture();
@@ -109,15 +120,8 @@ describe('author-values diagnostics', () => {
     // An author mid-edit: syntactically broken but structurally valid YAML.
     state.tables[0].results[0].bindings[1].value = 'count +';
 
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fatescroll-author-invalid-'));
-    tmpDirs.push(tmp);
-    writeCollection(tmp, manifestYaml(state.manifest, state.dirs), collectionFiles(state.dirs, state.tables));
-
     // Reopening parses (not a malformed document) and preserves the source.
-    const reopenedRaw = ingest(readCollectionEntries(tmp));
-    const reopened = engine.parseCollection(reopenedRaw.manifestYaml, reopenedRaw.files);
-    if (!reopened.ok) throw new Error(`reopen failed: ${reopened.errors.join('; ')}`);
-    const redrafts = mapDrafts(reopened.collection);
+    const { redrafts } = exportAndReopen(state, 'fatescroll-author-invalid-');
     expect(redrafts.tables[0].results[0].bindings.map((b) => `${b.name}=${b.value}`)).toEqual([
       'count=roll("1d1")',
       'price=count +',
@@ -156,15 +160,8 @@ describe('author-values end-to-end acceptance', () => {
 
     const preExportRids = state.tables[0].results.flatMap((r) => r.bindings.map((b) => b.rid));
 
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fatescroll-author-values-'));
-    tmpDirs.push(tmp);
-    writeCollection(tmp, manifestYaml(state.manifest, state.dirs), collectionFiles(state.dirs, state.tables));
-
     // Reopen the exported documents through the real import pipeline.
-    const reopenedRaw = ingest(readCollectionEntries(tmp));
-    const reopened = engine.parseCollection(reopenedRaw.manifestYaml, reopenedRaw.files);
-    if (!reopened.ok) throw new Error(`reopen failed: ${reopened.errors.join('; ')}`);
-    const redrafts = mapDrafts(reopened.collection);
+    const { tmp, redrafts } = exportAndReopen(state, 'fatescroll-author-values-');
     const rebound = redrafts.tables[0].results.flatMap((r) => r.bindings.map((b) => `${b.name}=${b.value}`));
     expect(rebound).toEqual(['count=roll("1d1")', 'price=count * 25', 'count=roll("1d1")', 'price=count * 10']);
     // Reopening assigns fresh editor ids; no row keeps its pre-export id.
