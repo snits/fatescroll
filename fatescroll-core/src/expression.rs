@@ -482,7 +482,7 @@ fn check_dice_literal(literal: &str, offset: usize) -> Result<diceman::Expr, Exp
     };
     let sides: u32 = sides_text
         .parse()
-        .map_err(|_| fail_at(d + 1, "sides must be ASCII decimal digits"))?;
+        .map_err(|_| fail_at(d + 1, "sides must fit in u32"))?;
     if !(1..=1000).contains(&count) {
         return Err(fail("count must be 1-1000"));
     }
@@ -1081,6 +1081,9 @@ mod tests {
         // bound message.
         let error = parse("roll(\"1001d6\")").unwrap_err();
         assert!(error.reason.contains("1-1000"), "got: {}", error.reason);
+        // Sides overflow gets the symmetric range message.
+        let error = parse("roll(\"1d99999999999\")").unwrap_err();
+        assert!(error.reason.contains("u32"), "got: {}", error.reason);
         // Non-digit counts keep the digit message.
         let error = parse("roll(\"xd6\")").unwrap_err();
         assert!(
