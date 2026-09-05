@@ -82,6 +82,163 @@ enum BinaryOp {
 
 pub(crate) type TypeScope = BTreeMap<String, ValueType>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Value {
+    Integer(i64),
+    Boolean(bool),
+    Text(String),
+}
+
+pub(crate) type ValueScope = BTreeMap<String, Value>;
+
+pub(crate) fn evaluate(
+    expr: &Expression,
+    scope: &ValueScope,
+    rng: &mut impl diceman::Rng,
+) -> Result<Value, ExpressionError> {
+    eval_node(&expr.root, scope, rng)
+}
+
+fn eval_node(
+    node: &ExprNode,
+    scope: &ValueScope,
+    rng: &mut impl diceman::Rng,
+) -> Result<Value, ExpressionError> {
+    match &node.kind {
+        ExprKind::Integer(value) => Ok(Value::Integer(*value)),
+        ExprKind::Boolean(value) => Ok(Value::Boolean(*value)),
+        ExprKind::Text(value) => Ok(Value::Text(value.clone())),
+        ExprKind::Variable(name) => scope
+            .get(name)
+            .cloned()
+            .ok_or_else(|| error(node.start, format!("unknown name `{name}`"))),
+        ExprKind::Dice { literal, expr } => {
+            // The caller's RNG is the only randomness source: evaluate the
+            // checked dice plan diceman parsed, never creating or reseeding.
+            let rolled = diceman::roller::evaluate_with_rng(expr, rng)
+                .map_err(|reason| error(node.start, format!("invalid dice roll: {reason}")))?;
+            rolled
+                .outcome
+                .as_numeric()
+                .map(Value::Integer)
+                .ok_or_else(|| {
+                    error(
+                        node.start,
+                        format!("dice literal `{literal}` produced a non-numeric outcome"),
+                    )
+                })
+        }
+        ExprKind::Unary { op, operand } => {
+            let operand_value = eval_node(operand, scope, rng)?;
+            match (op, operand_value) {
+                (UnaryOp::Neg, Value::Integer(a)) => a
+                    .checked_neg()
+                    .map(Value::Integer)
+                    .ok_or_else(|| error(node.start, "integer negation overflows")),
+                (UnaryOp::Not, Value::Boolean(a)) => Ok(Value::Boolean(!a)),
+                (UnaryOp::Neg, _) => Err(error(node.start, "unary `-` requires an integer")),
+                (UnaryOp::Not, _) => Err(error(node.start, "unary `!` requires a boolean")),
+            }
+        }
+        ExprKind::Conditional {
+            cond,
+            then_branch,
+            else_branch,
+        } => {
+            let cond_value = eval_node(cond, scope, rng)?;
+            match cond_value {
+                Value::Boolean(true) => eval_node(then_branch, scope, rng),
+                Value::Boolean(false) => eval_node(else_branch, scope, rng),
+                _ => Err(error(
+                    cond.start,
+                    "`if` condition must be boolean".to_string(),
+                )),
+            }
+        }
+        ExprKind::Binary { op, left, right } => match op {
+            // `&&` and `||` decide from the left side first and evaluate the
+            // right side only when it can change the result.
+            BinaryOp::And => match eval_node(left, scope, rng)? {
+                Value::Boolean(false) => Ok(Value::Boolean(false)),
+                Value::Boolean(true) => match eval_node(right, scope, rng)? {
+                    Value::Boolean(b) => Ok(Value::Boolean(b)),
+                    _ => Err(error(right.start, "boolean operators require booleans")),
+                },
+                _ => Err(error(left.start, "boolean operators require booleans")),
+            },
+            BinaryOp::Or => match eval_node(left, scope, rng)? {
+                Value::Boolean(true) => Ok(Value::Boolean(true)),
+                Value::Boolean(false) => match eval_node(right, scope, rng)? {
+                    Value::Boolean(b) => Ok(Value::Boolean(b)),
+                    _ => Err(error(right.start, "boolean operators require booleans")),
+                },
+                _ => Err(error(left.start, "boolean operators require booleans")),
+            },
+            _ => {
+                let left_value = eval_node(left, scope, rng)?;
+                let right_value = eval_node(right, scope, rng)?;
+                eval_eager_binary(node.start, *op, left_value, right_value)
+            }
+        },
+    }
+}
+
+/// Evaluate a binary operator whose operands are already evaluated.
+/// Callers handle lazy operators (`&&`, `||`) before reaching this helper.
+fn eval_eager_binary(
+    offset: usize,
+    op: BinaryOp,
+    left: Value,
+    right: Value,
+) -> Result<Value, ExpressionError> {
+    match (op, left, right) {
+        (BinaryOp::Add, Value::Integer(a), Value::Integer(b)) => a
+            .checked_add(b)
+            .map(Value::Integer)
+            .ok_or_else(|| error(offset, "integer addition overflows")),
+        (BinaryOp::Mul, Value::Integer(a), Value::Integer(b)) => a
+            .checked_mul(b)
+            .map(Value::Integer)
+            .ok_or_else(|| error(offset, "integer multiplication overflows")),
+        (BinaryOp::Sub, Value::Integer(a), Value::Integer(b)) => a
+            .checked_sub(b)
+            .map(Value::Integer)
+            .ok_or_else(|| error(offset, "integer subtraction overflows")),
+        (BinaryOp::Div, Value::Integer(a), Value::Integer(b)) => a
+            .checked_div(b)
+            .map(Value::Integer)
+            .ok_or_else(|| error(offset, "integer division overflows or divides by zero")),
+        (BinaryOp::Rem, Value::Integer(a), Value::Integer(b)) => a
+            .checked_rem(b)
+            .map(Value::Integer)
+            .ok_or_else(|| error(offset, "integer remainder overflows or divides by zero")),
+        (BinaryOp::Equal, Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a == b)),
+        (BinaryOp::Equal, Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(a == b)),
+        (BinaryOp::Equal, Value::Text(a), Value::Text(b)) => Ok(Value::Boolean(a == b)),
+        (BinaryOp::NotEqual, Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a != b)),
+        (BinaryOp::NotEqual, Value::Boolean(a), Value::Boolean(b)) => Ok(Value::Boolean(a != b)),
+        (BinaryOp::NotEqual, Value::Text(a), Value::Text(b)) => Ok(Value::Boolean(a != b)),
+        (BinaryOp::Less, Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a < b)),
+        (BinaryOp::LessEqual, Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a <= b)),
+        (BinaryOp::Greater, Value::Integer(a), Value::Integer(b)) => Ok(Value::Boolean(a > b)),
+        (BinaryOp::GreaterEqual, Value::Integer(a), Value::Integer(b)) => {
+            Ok(Value::Boolean(a >= b))
+        }
+        (BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Rem, _, _) => {
+            Err(error(offset, "arithmetic requires integers"))
+        }
+        (
+            BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual,
+            _,
+            _,
+        ) => Err(error(offset, "ordering requires integers")),
+        (BinaryOp::Equal | BinaryOp::NotEqual, _, _) => {
+            Err(error(offset, "equality requires matching operand types"))
+        }
+        _ => Err(error(offset, "unsupported operation")),
+    }
+}
+
 pub(crate) fn parse(source: &str) -> Result<Expression, ExpressionError> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(error(
@@ -1052,6 +1209,316 @@ mod tests {
         let error = parse("héllo").unwrap_err();
         assert_eq!(error.offset, 1);
         assert!(error.reason.contains('é'), "got: {}", error.reason);
+    }
+
+    #[test]
+    fn expression_skips_unselected_arithmetic() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let expr = parse("if true then 7 else 1 / 0").unwrap();
+        assert_eq!(
+            evaluate(&expr, &ValueScope::new(), &mut rng).unwrap(),
+            Value::Integer(7)
+        );
+        let bad = parse("9223372036854775807 + 1").unwrap();
+        assert!(evaluate(&bad, &ValueScope::new(), &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_dice_with_shared_rng() {
+        let scope = ValueScope::new();
+        // One RNG drives evaluate(); an identically seeded RNG manually rolls
+        // the same diceman plan. Both the outcome and the consumed RNG state
+        // (via checkpoint) must agree.
+        let mut eval_rng = diceman::FastRng::with_seed(7);
+        let mut manual_rng = diceman::FastRng::with_seed(7);
+        let expr = parse(r#"roll("1d6")"#).unwrap();
+        let evaluated = evaluate(&expr, &scope, &mut eval_rng).unwrap();
+        let manual =
+            diceman::roller::evaluate_with_rng(&diceman::parse("1d6").unwrap(), &mut manual_rng)
+                .unwrap()
+                .outcome
+                .as_numeric()
+                .unwrap();
+        assert_eq!(evaluated, Value::Integer(manual));
+        assert_eq!(eval_rng.checkpoint(), manual_rng.checkpoint());
+    }
+
+    #[test]
+    fn expression_rolls_dice_left_to_right() {
+        // A seed whose first two 1d6 rolls differ, so operand order is
+        // observable: `roll + roll * 100` distinguishes left-to-right
+        // (a + b * 100) from right-to-left (b + a * 100).
+        let seed = (0..1000u64)
+            .find(|seed| {
+                let mut rng = diceman::FastRng::with_seed(*seed);
+                let first =
+                    diceman::roller::evaluate_with_rng(&diceman::parse("1d6").unwrap(), &mut rng)
+                        .unwrap()
+                        .outcome
+                        .as_numeric()
+                        .unwrap();
+                let second =
+                    diceman::roller::evaluate_with_rng(&diceman::parse("1d6").unwrap(), &mut rng)
+                        .unwrap()
+                        .outcome
+                        .as_numeric()
+                        .unwrap();
+                first != second
+            })
+            .expect("a discriminating seed exists");
+        let mut eval_rng = diceman::FastRng::with_seed(seed);
+        let mut manual_rng = diceman::FastRng::with_seed(seed);
+        let scope = ValueScope::new();
+        let expr = parse(r#"roll("1d6") + roll("1d6") * 100"#).unwrap();
+        let evaluated = evaluate(&expr, &scope, &mut eval_rng).unwrap();
+        let first =
+            diceman::roller::evaluate_with_rng(&diceman::parse("1d6").unwrap(), &mut manual_rng)
+                .unwrap()
+                .outcome
+                .as_numeric()
+                .unwrap();
+        let second =
+            diceman::roller::evaluate_with_rng(&diceman::parse("1d6").unwrap(), &mut manual_rng)
+                .unwrap()
+                .outcome
+                .as_numeric()
+                .unwrap();
+        assert_eq!(evaluated, Value::Integer(first + second * 100));
+        assert_eq!(eval_rng.checkpoint(), manual_rng.checkpoint());
+    }
+
+    #[test]
+    fn expression_skips_dice_in_unselected_branches() {
+        let scope = ValueScope::new();
+        // Lazy branches must not advance RNG state: the checkpoint before
+        // and after evaluation is identical.
+        for source in [
+            r#"if false then roll("1d6") else 42"#,
+            r#"if true then 42 else roll("1d6")"#,
+            r#"false && (roll("1d6") == 0)"#,
+            r#"true || (roll("1d6") == 0)"#,
+        ] {
+            let mut rng = diceman::FastRng::with_seed(7);
+            let before = rng.checkpoint();
+            let expr = parse(source).unwrap();
+            let value = evaluate(&expr, &scope, &mut rng).unwrap();
+            assert_eq!(rng.checkpoint(), before, "for `{source}`");
+            let _ = value;
+        }
+        // Pure expressions leave the RNG untouched as well.
+        let mut rng = diceman::FastRng::with_seed(7);
+        let before = rng.checkpoint();
+        let expr = parse("1 + 2 * 3").unwrap();
+        assert_eq!(
+            evaluate(&expr, &scope, &mut rng).unwrap(),
+            Value::Integer(7)
+        );
+        assert_eq!(rng.checkpoint(), before);
+    }
+
+    #[test]
+    fn expression_resolves_scope_variables() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::from([
+            ("count".into(), Value::Integer(3)),
+            ("name".into(), Value::Text("gem".into())),
+            ("flag".into(), Value::Boolean(true)),
+        ]);
+        let expr = parse("count * 25").unwrap();
+        assert_eq!(
+            evaluate(&expr, &scope, &mut rng).unwrap(),
+            Value::Integer(75)
+        );
+        let words = parse(r#"if flag then name else "none""#).unwrap();
+        assert_eq!(
+            evaluate(&words, &scope, &mut rng).unwrap(),
+            Value::Text("gem".into())
+        );
+        let missing = parse("total + 1").unwrap();
+        let error = evaluate(&missing, &scope, &mut rng).unwrap_err();
+        assert!(error.reason.contains("total"), "got: {}", error.reason);
+        // A text value used where an integer is required fails at runtime,
+        // mirroring the static type checker's rejection.
+        let wrong_type = parse("name + 1").unwrap();
+        assert!(evaluate(&wrong_type, &scope, &mut rng).is_err());
+        let wrong_cond = parse("if count then 1 else 2").unwrap();
+        assert!(evaluate(&wrong_cond, &scope, &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_text_and_equality_values() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        // Supported escapes were accepted by the parser in Task 1 but their
+        // decoded values were never pinned; pin them here.
+        for (source, expected) in [
+            (r#""a\nb""#, "a\nb"),
+            (r#""a\rb""#, "a\rb"),
+            (r#""a\tb""#, "a\tb"),
+            (r#""a\"b""#, "a\"b"),
+            (r#""a\\b""#, "a\\b"),
+        ] {
+            let expr = parse(source).unwrap();
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Text(expected.to_string()),
+                "for `{source}`"
+            );
+        }
+        for (source, expected) in [
+            (r#""a" == "a""#, true),
+            (r#""a" != "b""#, true),
+            (r#""a" == "b""#, false),
+            ("true == true", true),
+            ("true != false", true),
+            ("false == false", true),
+            ("1 == 1", true),
+            ("1 != 2", true),
+        ] {
+            let expr = parse(source).unwrap();
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Boolean(expected),
+                "for `{source}`"
+            );
+        }
+        let mismatched = parse(r#"1 == "a""#).unwrap();
+        assert!(evaluate(&mismatched, &scope, &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_boolean_operators_lazily() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        for (source, expected) in [
+            ("!true", false),
+            ("!false", true),
+            ("true && false", false),
+            ("true || false", true),
+            ("1 < 2", true),
+            ("2 <= 2", true),
+            ("3 > 2", true),
+            ("2 >= 3", false),
+        ] {
+            let expr = parse(source).unwrap();
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Boolean(expected),
+                "for `{source}`"
+            );
+        }
+        // Short-circuiting must skip the failing division on the right.
+        for source in ["false && (1 / 0 == 0)", "true || (1 / 0 == 0)"] {
+            let expr = parse(source).unwrap();
+            let expected = source.starts_with("false");
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Boolean(!expected),
+                "for `{source}`"
+            );
+        }
+    }
+
+    #[test]
+    fn expression_evaluates_checked_negation() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        let expr = parse("-5").unwrap();
+        assert_eq!(
+            evaluate(&expr, &scope, &mut rng).unwrap(),
+            Value::Integer(-5)
+        );
+        let double = parse("- -5").unwrap();
+        assert_eq!(
+            evaluate(&double, &scope, &mut rng).unwrap(),
+            Value::Integer(5)
+        );
+        let overflow = parse("-(0 - 9223372036854775807 - 1)").unwrap();
+        assert!(evaluate(&overflow, &scope, &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_checked_remainder() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        for (source, expected) in [("7 % 3", 1), ("(0 - 7) % 3", -1), ("7 % (0 - 3)", 1)] {
+            let expr = parse(source).unwrap();
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Integer(expected),
+                "for `{source}`"
+            );
+        }
+        for source in [
+            "1 % 0",
+            "1 % (2 - 2)",
+            "(0 - 9223372036854775807 - 1) % (0 - 1)",
+        ] {
+            let expr = parse(source).unwrap();
+            assert!(
+                evaluate(&expr, &scope, &mut rng).is_err(),
+                "expected an error for `{source}`"
+            );
+        }
+    }
+
+    #[test]
+    fn expression_evaluates_checked_division() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        for (source, expected) in [
+            ("7 / 2", 3),
+            ("(0 - 7) / 2", -3),
+            ("7 / (0 - 2)", -3),
+            ("(0 - 7) / (0 - 2)", 3),
+        ] {
+            let expr = parse(source).unwrap();
+            assert_eq!(
+                evaluate(&expr, &scope, &mut rng).unwrap(),
+                Value::Integer(expected),
+                "for `{source}`"
+            );
+        }
+        for source in [
+            "1 / 0",
+            "1 / (2 - 2)",
+            "(0 - 9223372036854775807 - 1) / (0 - 1)",
+        ] {
+            let expr = parse(source).unwrap();
+            assert!(
+                evaluate(&expr, &scope, &mut rng).is_err(),
+                "expected an error for `{source}`"
+            );
+        }
+    }
+
+    #[test]
+    fn expression_evaluates_checked_subtraction() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        let expr = parse("10 - 3 - 2").unwrap();
+        assert_eq!(
+            evaluate(&expr, &scope, &mut rng).unwrap(),
+            Value::Integer(5)
+        );
+        let overflow = parse("0 - 9223372036854775807 - 2").unwrap();
+        assert!(evaluate(&overflow, &scope, &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_arithmetic_precedence() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        let plain = parse("1 + 2 * 3").unwrap();
+        assert_eq!(
+            evaluate(&plain, &scope, &mut rng).unwrap(),
+            Value::Integer(7)
+        );
+        let grouped = parse("(1 + 2) * 3").unwrap();
+        assert_eq!(
+            evaluate(&grouped, &scope, &mut rng).unwrap(),
+            Value::Integer(9)
+        );
     }
 
     #[test]
