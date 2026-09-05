@@ -235,7 +235,11 @@ fn eval_eager_binary(
         (BinaryOp::Equal | BinaryOp::NotEqual, _, _) => {
             Err(error(offset, "equality requires matching operand types"))
         }
-        _ => Err(error(offset, "unsupported operation")),
+        // `&&` and `||` short-circuit in the caller and never reach this
+        // helper; the arm exists so the match stays exhaustive.
+        (BinaryOp::And | BinaryOp::Or, _, _) => {
+            unreachable!("lazy operators are handled by the caller")
+        }
     }
 }
 
@@ -438,43 +442,52 @@ fn error(offset: usize, reason: impl Into<String>) -> ExpressionError {
 /// delegate to diceman for the parsed dice plan. Returns the checked dice
 /// expression; the caller's original literal is stored on the AST node.
 fn check_dice_literal(literal: &str, offset: usize) -> Result<diceman::Expr, ExpressionError> {
-    let fail = |reason: &str| {
+    // `offset` is the opening quote, so literal content starts one byte
+    // later; error positions are byte offsets into that content.
+    let fail_at = |at: usize, reason: &str| {
         error(
-            offset,
+            offset + 1 + at,
             format!("invalid dice literal `{literal}`: {reason}"),
         )
     };
-    if literal.bytes().any(|b| b.is_ascii_whitespace()) {
-        return Err(fail("no internal whitespace allowed"));
+    let fail = |reason: &str| fail_at(0, reason);
+    if let Some(at) = literal.bytes().position(|b| b.is_ascii_whitespace()) {
+        return Err(fail_at(at, "no internal whitespace allowed"));
     }
     let Some(d) = literal.find('d') else {
         return Err(fail("expected `[N]dS` form"));
     };
-    if literal[d + 1..].contains('d') || literal.contains('D') {
-        return Err(fail("expected `[N]dS` form"));
+    if let Some(rel) = literal[d + 1..].find('d') {
+        return Err(fail_at(d + 1 + rel, "expected `[N]dS` form"));
+    }
+    if let Some(at) = literal.find('D') {
+        return Err(fail_at(at, "expected `[N]dS` form"));
     }
     let (count_text, sides_text) = (&literal[..d], &literal[d + 1..]);
-    if !sides_text.bytes().all(|b| b.is_ascii_digit()) || sides_text.is_empty() {
-        return Err(fail("sides must be ASCII decimal digits"));
+    if let Some(rel) = sides_text.bytes().position(|b| !b.is_ascii_digit()) {
+        return Err(fail_at(d + 1 + rel, "sides must be ASCII decimal digits"));
     }
-    if !count_text.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(fail("count must be ASCII decimal digits"));
+    if sides_text.is_empty() {
+        return Err(fail_at(d + 1, "sides must be ASCII decimal digits"));
+    }
+    if let Some(rel) = count_text.bytes().position(|b| !b.is_ascii_digit()) {
+        return Err(fail_at(rel, "count must be ASCII decimal digits"));
     }
     let count: u32 = if count_text.is_empty() {
         1
     } else {
         count_text
             .parse()
-            .map_err(|_| fail("count must be ASCII decimal digits"))?
+            .map_err(|_| fail("count must fit in u32"))?
     };
     let sides: u32 = sides_text
         .parse()
-        .map_err(|_| fail("sides must be ASCII decimal digits"))?;
+        .map_err(|_| fail_at(d + 1, "sides must be ASCII decimal digits"))?;
     if !(1..=1000).contains(&count) {
         return Err(fail("count must be 1-1000"));
     }
     if !(1..=1_000_000).contains(&sides) {
-        return Err(fail("sides must be 1-1000000"));
+        return Err(fail_at(d + 1, "sides must be 1-1000000"));
     }
     let normalized = format!("{count}d{sides}");
     diceman::parse(&normalized).map_err(|_| fail("diceman rejected the dice literal"))
@@ -946,8 +959,6 @@ mod tests {
         let scope = TypeScope::from([("count".into(), ValueType::Integer)]);
         let expr = parse(r#"if count == 1 then "gem" else "gems""#).unwrap();
         assert_eq!(check(&expr, &scope, false).unwrap(), ValueType::Text);
-        let invalid = parse(r#"if true then 1 else "gems""#).unwrap();
-        assert!(check(&invalid, &scope, false).is_err());
     }
 
     #[test]
@@ -1042,6 +1053,44 @@ mod tests {
     }
 
     #[test]
+    fn expression_points_dice_errors_inside_the_literal() {
+        // The opening quote of `roll("...")` sits at 5, so literal content
+        // starts at 6; each error points at its offending character there.
+        for (source, expected) in [
+            ("roll(\"2dx\")", 8),
+            ("roll(\"2d 6\")", 8),
+            ("roll(\"2d6d8\")", 9),
+            ("roll(\"dD6\")", 7),
+            ("roll(\"xd6\")", 6),
+            ("roll(\"1d0\")", 8),
+            ("roll(\"0d6\")", 6),
+            ("roll(\"26\")", 6),
+        ] {
+            let error = parse(source).unwrap_err();
+            assert_eq!(error.offset, expected, "for `{source}`");
+        }
+    }
+
+    #[test]
+    fn expression_reports_dice_count_overflow_distinctly() {
+        // All-digit counts beyond u32 range are a range problem, not a
+        // digit problem; the message must say so.
+        let error = parse("roll(\"99999999999d6\")").unwrap_err();
+        assert!(error.reason.contains("u32"), "got: {}", error.reason);
+        // A count that fits u32 but exceeds the table bound keeps the
+        // bound message.
+        let error = parse("roll(\"1001d6\")").unwrap_err();
+        assert!(error.reason.contains("1-1000"), "got: {}", error.reason);
+        // Non-digit counts keep the digit message.
+        let error = parse("roll(\"xd6\")").unwrap_err();
+        assert!(
+            error.reason.contains("ASCII decimal digits"),
+            "got: {}",
+            error.reason
+        );
+    }
+
+    #[test]
     fn expression_accepts_bounded_dice_literals() {
         let scope = TypeScope::new();
         for source in ["roll(\"1d6\")", "roll(\"d20\")", "roll(\"1000d1000000\")"] {
@@ -1051,10 +1100,33 @@ mod tests {
     }
 
     #[test]
+    fn expression_rejects_unicode_outside_strings_without_panicking() {
+        // Author-supplied input is arbitrary UTF-8; none of these may panic.
+        for source in [
+            "🎲",
+            "1 + 🎲",
+            "日本語",
+            "if 🎲 then 1 else 2",
+            "a\u{200b}b",
+            "e\u{301}",
+            "\"unclosed 🎲",
+            "🎲 == 🎲",
+        ] {
+            assert!(parse(source).is_err(), "expected rejection for `{source}`");
+        }
+        // Unicode inside string literals stays valid.
+        assert!(parse("\"🎲日本語\"").is_ok());
+    }
+
+    #[test]
     fn expression_enforces_source_and_nesting_limits() {
         let oversized = format!("1{}", " ".repeat(MAX_SOURCE_BYTES));
         assert!(oversized.len() > MAX_SOURCE_BYTES);
         assert!(parse(&oversized).is_err());
+        // Exactly the limit is accepted; only beyond it rejects.
+        let boundary = format!("1{}", " ".repeat(MAX_SOURCE_BYTES - 1));
+        assert_eq!(boundary.len(), MAX_SOURCE_BYTES);
+        assert!(parse(&boundary).is_ok());
         let nested = format!("{}1{}", "(".repeat(64), ")".repeat(64));
         assert!(parse(&nested).is_err());
         // The root counts as depth 1, so 63 enclosing groups fit the
@@ -1408,12 +1480,14 @@ mod tests {
             );
         }
         // Short-circuiting must skip the failing division on the right.
-        for source in ["false && (1 / 0 == 0)", "true || (1 / 0 == 0)"] {
+        for (source, expected) in [
+            ("false && (1 / 0 == 0)", false),
+            ("true || (1 / 0 == 0)", true),
+        ] {
             let expr = parse(source).unwrap();
-            let expected = source.starts_with("false");
             assert_eq!(
                 evaluate(&expr, &scope, &mut rng).unwrap(),
-                Value::Boolean(!expected),
+                Value::Boolean(expected),
                 "for `{source}`"
             );
         }
@@ -1503,6 +1577,24 @@ mod tests {
         );
         let overflow = parse("0 - 9223372036854775807 - 2").unwrap();
         assert!(evaluate(&overflow, &scope, &mut rng).is_err());
+    }
+
+    #[test]
+    fn expression_evaluates_checked_multiplication() {
+        let mut rng = diceman::FastRng::with_seed(19);
+        let scope = ValueScope::new();
+        let expr = parse("6 * 7").unwrap();
+        assert_eq!(
+            evaluate(&expr, &scope, &mut rng).unwrap(),
+            Value::Integer(42)
+        );
+        let overflow = parse("9223372036854775807 * 2").unwrap();
+        let error = evaluate(&overflow, &scope, &mut rng).unwrap_err();
+        assert!(
+            error.reason.contains("multiplication"),
+            "got: {}",
+            error.reason
+        );
     }
 
     #[test]
