@@ -125,6 +125,7 @@ mod tests {
                     max: 3,
                     text: Some("Animal encounter".into()),
                     chain: Some(vec![ChainRef::Simple("animal-type".into())]),
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 4,
@@ -134,18 +135,21 @@ mod tests {
                         ChainRef::Simple("bandit-strength".into()),
                         ChainRef::Simple("bandit-motivation".into()),
                     ]),
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 6,
                     max: 7,
                     text: Some("Abandoned campsite".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 8,
                     max: 8,
                     text: Some("Merchant".into()),
                     chain: Some(vec![ChainRef::Simple("merchant-goods".into())]),
+                    bindings: vec![],
                 },
             ],
         }
@@ -219,12 +223,14 @@ mod tests {
                             reroll: vec![1],
                         },
                     ]),
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 2,
                     max: 4,
                     text: Some("Normal".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -247,6 +253,7 @@ mod tests {
                 max: 4,
                 text: Some("Something".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("test.minimal", &table, false);
@@ -270,6 +277,7 @@ mod tests {
                     max: v,
                     text: Some("E".into()),
                     chain: None,
+                    bindings: vec![],
                 })
                 .collect(),
         };
@@ -291,6 +299,7 @@ mod tests {
                 max: 6,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.plain", &table, false);
@@ -312,12 +321,14 @@ mod tests {
                     max: -1,
                     text: Some("Decline".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 0,
                     max: 6,
                     text: Some("Stable".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -344,6 +355,7 @@ mod tests {
                 max: 12,
                 text: Some("Outcome".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.boarding", &table, true);
@@ -368,6 +380,7 @@ mod tests {
                 max: 12,
                 text: Some("Outcome".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.boarding", &table, false);
@@ -389,6 +402,7 @@ mod tests {
                 max: 6,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.plain", &table, true);
@@ -457,6 +471,7 @@ mod tests {
                 max: 100,
                 text: Some("x".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.t", &table, false);
@@ -480,6 +495,7 @@ mod tests {
                 max: 1,
                 text: Some("x".into()),
                 chain: Some(vec![]),
+                bindings: vec![],
             }],
         };
         let output = format_table("ns.t", &table, false);

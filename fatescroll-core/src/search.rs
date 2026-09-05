@@ -81,6 +81,7 @@ mod tests {
                     max: 6,
                     text: Some("Ruby".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -99,6 +100,7 @@ mod tests {
                     max: 6,
                     text: Some("Wolves".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -117,6 +119,7 @@ mod tests {
                     max: 6,
                     text: Some("Smith".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -205,6 +208,7 @@ mod tests {
                 max: 6,
                 text: Some("result".into()),
                 chain: None,
+                bindings: vec![],
             }],
         }
     }

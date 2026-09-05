@@ -348,12 +348,14 @@ mod tests {
                         max: 3,
                         text: Some("Low".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 4,
                         max: 6,
                         text: Some("High".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                 ],
             },
@@ -375,12 +377,14 @@ mod tests {
                         max: 2,
                         text: Some("Follow up".into()),
                         chain: Some(vec![ChainRef::Simple("simple".into())]),
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 3,
                         max: 4,
                         text: Some("No chain".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                 ],
             },
@@ -413,6 +417,7 @@ mod tests {
                     max: 4,
                     text: Some("Found {2d6} gold coins".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -469,6 +474,7 @@ mod tests {
                     max: 4,
                     text: Some("Always chains".into()),
                     chain: Some(vec![ChainRef::Simple("child".into())]),
+                    bindings: vec![],
                 }],
             },
         )
@@ -487,6 +493,7 @@ mod tests {
                     max: 6,
                     text: Some("Child result".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -527,6 +534,7 @@ mod tests {
                     max: 4,
                     text: Some("Loop".into()),
                     chain: Some(vec![ChainRef::Simple("b".into())]),
+                    bindings: vec![],
                 }],
             },
         )
@@ -545,6 +553,7 @@ mod tests {
                     max: 4,
                     text: Some("Loop".into()),
                     chain: Some(vec![ChainRef::Simple("a".into())]),
+                    bindings: vec![],
                 }],
             },
         )
@@ -576,6 +585,7 @@ mod tests {
                         max: 4,
                         text: Some(format!("T{i}")),
                         chain,
+                        bindings: vec![],
                     }],
                 },
             )
@@ -646,6 +656,7 @@ mod tests {
                     max: 4,
                     text: Some("Leaf".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -675,6 +686,7 @@ mod tests {
                     max: 0,
                     text: Some("Zero result".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -701,6 +713,7 @@ mod tests {
                     max: 4,
                     text: Some("Unreachable".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -728,6 +741,7 @@ mod tests {
                     max: 100,
                     text: Some("Unreachable".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -755,6 +769,7 @@ mod tests {
                     max: 6,
                     text: Some("Unreachable".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -782,6 +797,7 @@ mod tests {
                     max: 4,
                     text: Some("Hello {world} and {2d6} gold".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -815,6 +831,7 @@ mod tests {
                     max: 4,
                     text: None,
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -846,12 +863,14 @@ mod tests {
                             table: "reroll-target".into(),
                             reroll: vec![1],
                         }]),
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 2,
                         max: 4,
                         text: Some("Normal".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                 ],
             },
@@ -872,12 +891,14 @@ mod tests {
                         max: 1,
                         text: Some("Should be skipped".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 2,
                         max: 4,
                         text: Some("Valid result".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                 ],
             },
@@ -917,6 +938,7 @@ mod tests {
                         ChainRef::Simple("child_a".into()),
                         ChainRef::Simple("child_b".into()),
                     ]),
+                    bindings: vec![],
                 }],
             },
         )
@@ -935,6 +957,7 @@ mod tests {
                     max: 6,
                     text: Some("Result A".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -953,6 +976,7 @@ mod tests {
                     max: 6,
                     text: Some("Result B".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -985,6 +1009,7 @@ mod tests {
                         table: "exhaust-target".into(),
                         reroll: vec![1, 2, 3, 4],
                     }]),
+                    bindings: vec![],
                 }],
             },
         )
@@ -1003,6 +1028,7 @@ mod tests {
                     max: 4,
                     text: Some("Unreachable".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -1021,6 +1047,7 @@ mod tests {
                 max: v,
                 text: Some(format!("E{v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         reg.register(
@@ -1103,6 +1130,7 @@ mod tests {
                 max: v,
                 text: Some("P".into()),
                 chain: Some(vec![ChainRef::Simple("child".into())]),
+                bindings: vec![],
             })
             .collect();
         reg.register(
@@ -1132,6 +1160,7 @@ mod tests {
                     max: 6,
                     text: Some("C".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -1239,6 +1268,7 @@ mod tests {
                 max: v,
                 text: Some(format!("Outcome {v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         reg.register(
@@ -1302,6 +1332,7 @@ mod tests {
                 max: v,
                 text: Some("P".into()),
                 chain: Some(vec![ChainRef::Simple("child".into())]),
+                bindings: vec![],
             })
             .collect();
         reg.register(
@@ -1331,6 +1362,7 @@ mod tests {
                     max: 6,
                     text: Some("C".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -1365,6 +1397,7 @@ mod tests {
                     max: 6,
                     text: Some("Only outcome".into()),
                     chain: None,
+                    bindings: vec![],
                 }],
             },
         )
@@ -1403,24 +1436,28 @@ mod tests {
                                 reroll: vec![1],
                             },
                         ]),
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 2,
                         max: 2,
                         text: Some("Hands glow blue".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 3,
                         max: 3,
                         text: Some("Lose sense of smell".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                     ResultEntry {
                         min: 4,
                         max: 4,
                         text: Some("Hair turns white".into()),
                         chain: None,
+                        bindings: vec![],
                     },
                 ],
             },

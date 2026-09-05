@@ -49,8 +49,17 @@ impl ChainRef {
 pub struct ResultEntry {
     pub min: i32,
     pub max: i32,
+    #[serde(rename = "let", default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<ResultBinding>,
     pub text: Option<String>,
     pub chain: Option<Vec<ChainRef>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResultBinding {
+    pub name: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -219,6 +228,7 @@ mod tests {
                         reroll: vec![1],
                     },
                 ]),
+                bindings: vec![],
             }],
         };
         let v1 = serde_json::to_value(&table).unwrap();
@@ -245,6 +255,7 @@ mod tests {
                 max: 6,
                 text: Some("Something".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let v = serde_json::to_value(&table).unwrap();
@@ -715,5 +726,198 @@ tables:
             table.notes(),
             &["Combine occupation and disposition into one line".to_string()]
         );
+    }
+
+    #[test]
+    fn result_bindings_survive_yaml_serialization() {
+        let yaml = r#"
+id: gems
+name: Gems
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        value: 'roll("1d4")'
+      - name: price
+        value: 'count * 25'
+    text: 'Found {= count} gems worth {= price} gold.'
+"#;
+        let table: Table = serde_yaml::from_str(yaml).unwrap();
+        match &table {
+            Table::Simple { results, .. } => {
+                assert_eq!(results.len(), 1);
+                assert_eq!(results[0].bindings.len(), 2);
+                assert_eq!(results[0].bindings[0].name, "count");
+                assert_eq!(results[0].bindings[0].value, "roll(\"1d4\")");
+                assert_eq!(results[0].bindings[1].name, "price");
+                assert_eq!(results[0].bindings[1].value, "count * 25");
+            }
+            _ => panic!("Expected Simple table"),
+        }
+        // Nonempty bindings survive a YAML serialization round-trip.
+        let emitted = serde_yaml::to_string(&table).unwrap();
+        let back: Table = serde_yaml::from_str(&emitted).unwrap();
+        match back {
+            Table::Simple { results, .. } => {
+                assert_eq!(results[0].bindings.len(), 2);
+                assert_eq!(results[0].bindings[0].name, "count");
+                assert_eq!(results[0].bindings[1].value, "count * 25");
+            }
+            _ => panic!("Expected Simple table"),
+        }
+    }
+
+    #[test]
+    fn result_bindings_let_defaults_to_empty_when_omitted_or_empty() {
+        for yaml in [
+            r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    text: X
+"#,
+            r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let: []
+    text: X
+"#,
+        ] {
+            let table: Table = serde_yaml::from_str(yaml).unwrap();
+            match table {
+                Table::Simple { results, .. } => assert!(results[0].bindings.is_empty()),
+                _ => panic!("Expected Simple table"),
+            }
+        }
+    }
+
+    #[test]
+    fn result_bindings_reject_null_let() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+    text: X
+"#;
+        assert!(serde_yaml::from_str::<Table>(yaml).is_err());
+    }
+
+    #[test]
+    fn result_bindings_reject_unknown_fields() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        value: '1'
+        extra: true
+    text: X
+"#;
+        assert!(serde_yaml::from_str::<Table>(yaml).is_err());
+    }
+
+    #[test]
+    fn result_bindings_reject_duplicate_fields() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        name: total
+        value: '1'
+    text: X
+"#;
+        assert!(serde_yaml::from_str::<Table>(yaml).is_err());
+    }
+
+    #[test]
+    fn result_bindings_reject_non_string_values() {
+        let yaml = r#"
+id: plain
+name: Plain
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        value: 25
+    text: X
+"#;
+        assert!(serde_yaml::from_str::<Table>(yaml).is_err());
+    }
+
+    #[test]
+    fn result_bindings_json_round_trip() {
+        let table = Table::Simple {
+            id: "gems".into(),
+            name: "Gems".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![
+                ResultEntry {
+                    min: 1,
+                    max: 6,
+                    bindings: vec![
+                        ResultBinding {
+                            name: "count".into(),
+                            value: "roll(\"1d4\")".into(),
+                        },
+                        ResultBinding {
+                            name: "price".into(),
+                            value: "count * 25".into(),
+                        },
+                    ],
+                    text: Some("Found {= count} gems.".into()),
+                    chain: None,
+                },
+                ResultEntry {
+                    min: 7,
+                    max: 7,
+                    bindings: vec![],
+                    text: Some("Nothing.".into()),
+                    chain: None,
+                },
+            ],
+        };
+        let v1 = serde_json::to_value(&table).unwrap();
+        assert_eq!(v1["results"][0]["let"].as_array().unwrap().len(), 2);
+        assert_eq!(v1["results"][0]["let"][0]["name"], "count");
+        assert_eq!(v1["results"][0]["let"][1]["value"], "count * 25");
+        // Empty bindings are omitted from serialization.
+        assert!(v1["results"][1].get("let").is_none());
+        let back: Table = serde_json::from_value(v1.clone()).unwrap();
+        let v2 = serde_json::to_value(&back).unwrap();
+        assert_eq!(v1, v2);
     }
 }

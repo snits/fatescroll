@@ -95,6 +95,7 @@ mod tests {
                 max: 6,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         }
     }

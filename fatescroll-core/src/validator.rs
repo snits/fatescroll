@@ -516,6 +516,7 @@ mod tests {
             max: 3,
             text: Some("test".into()),
             chain: None,
+            bindings: vec![],
         };
         assert!(validate_result_entry(&entry, "test-table").is_ok());
     }
@@ -527,6 +528,7 @@ mod tests {
             max: 2,
             text: Some("test".into()),
             chain: None,
+            bindings: vec![],
         };
         let err = validate_result_entry(&entry, "test-table").unwrap_err();
         assert!(matches!(
@@ -550,12 +552,14 @@ mod tests {
                     max: 3,
                     text: Some("Low".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 4,
                     max: 6,
                     text: Some("High".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -577,12 +581,14 @@ mod tests {
                     max: 2,
                     text: Some("Low".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 5,
                     max: 6,
                     text: Some("High".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -608,12 +614,14 @@ mod tests {
                     max: 4,
                     text: Some("Low".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 3,
                     max: 6,
                     text: Some("High".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -638,6 +646,7 @@ mod tests {
                 max: 6,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let err = validate_table(&table).unwrap_err();
@@ -661,6 +670,7 @@ mod tests {
                 max: 0,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let err = validate_table(&table).unwrap_err();
@@ -685,12 +695,14 @@ mod tests {
                     max: 3,
                     text: Some("Bad".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 4,
                     max: 6,
                     text: Some("OK".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -713,12 +725,14 @@ mod tests {
                     max: 3,
                     text: Some("OK".into()),
                     chain: None,
+                    bindings: vec![],
                 },
                 ResultEntry {
                     min: 4,
                     max: 8, // above dice_max of 6
                     text: Some("Bad".into()),
                     chain: None,
+                    bindings: vec![],
                 },
             ],
         };
@@ -760,12 +774,14 @@ mod tests {
                             max: 2,
                             text: Some("X".into()),
                             chain: Some(vec![ChainRef::Simple("nonexistent".into())]),
+                            bindings: vec![],
                         },
                         ResultEntry {
                             min: 3,
                             max: 4,
                             text: Some("Y".into()),
                             chain: None,
+                            bindings: vec![],
                         },
                     ],
                 },
@@ -814,6 +830,7 @@ mod tests {
                 max: 4,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let err = validate_table(&table).unwrap_err();
@@ -831,6 +848,7 @@ mod tests {
                 max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         let table = Table::Simple {
@@ -857,6 +875,7 @@ mod tests {
                 max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         let table = Table::Simple {
@@ -888,6 +907,7 @@ mod tests {
                 max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         results.push(ResultEntry {
@@ -895,6 +915,7 @@ mod tests {
             max: 11,
             text: Some("Duplicate".into()),
             chain: None,
+            bindings: vec![],
         });
         let table = Table::Simple {
             id: "d66-overlap".into(),
@@ -923,6 +944,7 @@ mod tests {
                 max: v as i32,
                 text: Some(format!("Result {v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         // Add an invalid entry for 17
@@ -931,6 +953,7 @@ mod tests {
             max: 17,
             text: Some("Invalid".into()),
             chain: None,
+            bindings: vec![],
         });
         let table = Table::Simple {
             id: "d66-invalid".into(),
@@ -956,6 +979,7 @@ mod tests {
                 max: v,
                 text: Some(format!("E{v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         let table = Table::Simple {
@@ -978,6 +1002,7 @@ mod tests {
                 max: v,
                 text: Some(format!("E{v}")),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         let table = Table::Simple {
@@ -1000,6 +1025,7 @@ mod tests {
                 max: v,
                 text: Some("E".into()),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         let table = Table::Simple {
@@ -1024,6 +1050,7 @@ mod tests {
                 max: v,
                 text: Some("E".into()),
                 chain: None,
+                bindings: vec![],
             })
             .collect();
         results.push(ResultEntry {
@@ -1031,6 +1058,7 @@ mod tests {
             max: 15,
             text: Some("Over".into()),
             chain: None,
+            bindings: vec![],
         });
         let table = Table::Simple {
             id: "carousing".into(),
@@ -1060,6 +1088,7 @@ mod tests {
                 max: 8,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         assert!(matches!(
@@ -1081,6 +1110,7 @@ mod tests {
                 max: 11,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         assert!(matches!(
@@ -1099,6 +1129,7 @@ mod tests {
             max: 4,
             text: Some("x".into()),
             chain: None,
+            bindings: vec![],
         }];
         let err = validate_envelope_coverage("t", 2, 5, &results).unwrap_err();
         match err {
@@ -1117,6 +1148,7 @@ mod tests {
             max: 13,
             text: Some("x".into()),
             chain: None,
+            bindings: vec![],
         }];
         let err = validate_envelope_coverage("t", 10, 13, &results).unwrap_err();
         match err {
@@ -1135,12 +1167,14 @@ mod tests {
                 max: 13,
                 text: Some("a".into()),
                 chain: None,
+                bindings: vec![],
             },
             ResultEntry {
                 min: 10,
                 max: 10,
                 text: Some("b".into()),
                 chain: None,
+                bindings: vec![],
             },
         ];
         let err = validate_envelope_coverage("t", 10, 13, &results).unwrap_err();
@@ -1166,6 +1200,7 @@ mod tests {
                 max: 19,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let err = validate_table(&table).unwrap_err();
@@ -1194,6 +1229,7 @@ mod tests {
                 max: 8,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         assert!(matches!(
@@ -1219,6 +1255,7 @@ mod tests {
                 max: 8,
                 text: Some("X".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         assert!(matches!(
@@ -1259,6 +1296,7 @@ mod tests {
                 max: sides as i32,
                 text: Some("x".into()),
                 chain: None,
+                bindings: vec![],
             }],
         };
         let err = validate_table(&table).unwrap_err();
