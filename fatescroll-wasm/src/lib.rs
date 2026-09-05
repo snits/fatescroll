@@ -685,6 +685,91 @@ mod tests {
         assert!(out.get("tables").is_none());
     }
 
+    const GEMS_YAML: &str = "id: gems\nname: Gems\ntype: simple\ntags: []\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    let:\n      - name: count\n        value: 'roll(\"1d1\")'\n      - name: price\n        value: 'count * 25'\n    text: 'Found {= count} {= if count == 1 then \"gem\" else \"gems\"} worth {= price} gold.'\n";
+
+    const BAD_EXPR_YAML: &str = "id: bad\nname: Bad\ntype: simple\ntags: []\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: 'Broken {= count + } here.'\n";
+
+    fn expr_files_json(contents: &str, stem: &str) -> String {
+        serde_json::json!([{
+            "path": format!("core/{stem}.yaml"), "namespace": "t.core", "stem": stem,
+            "contents": contents,
+        }])
+        .to_string()
+    }
+
+    #[test]
+    fn parse_collection_carries_result_bindings() {
+        let files =
+            serde_json::json!([{"path": "core/gems.yaml", "contents": GEMS_YAML}]).to_string();
+        let out: serde_json::Value =
+            serde_json::from_str(&parse_collection(OPEN_MANIFEST, &files)).unwrap();
+        assert!(out.get("errors").is_none(), "unexpected errors: {out}");
+        let tables = out["tables"].as_array().unwrap();
+        assert_eq!(tables.len(), 1);
+        let entry = &tables[0]["table"]["results"][0];
+        let bindings = entry["let"].as_array().unwrap();
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings[0]["name"], "count");
+        assert_eq!(bindings[0]["value"], "roll(\"1d1\")");
+        assert_eq!(bindings[1]["name"], "price");
+        assert_eq!(bindings[1]["value"], "count * 25");
+        assert!(
+            entry["text"]
+                .as_str()
+                .unwrap()
+                .contains("{= if count == 1 then")
+        );
+    }
+
+    #[test]
+    fn validate_collection_reports_bad_result_expression() {
+        let out: serde_json::Value = serde_json::from_str(&validate_collection(
+            MANIFEST,
+            &expr_files_json(BAD_EXPR_YAML, "bad"),
+        ))
+        .unwrap();
+        let errs = out["errors"].as_array().unwrap();
+        assert_eq!(errs.len(), 1);
+        // Full-string pin of the {"errors":[...]} envelope content.
+        assert_eq!(
+            errs[0],
+            "validation error: invalid result expression in table 'Bad' result 1 at text (offset 9): expected an expression"
+        );
+    }
+
+    #[test]
+    fn roll_collection_renders_result_expressions() {
+        let out: serde_json::Value = serde_json::from_str(&roll_collection(
+            MANIFEST,
+            &expr_files_json(GEMS_YAML, "gems"),
+            "t.core.gems",
+            42,
+        ))
+        .unwrap();
+        assert!(out.get("error").is_none(), "unexpected error: {out}");
+        assert_eq!(out["table_name"], "Gems");
+        assert_eq!(out["text"], "Found 1 gem worth 25 gold.");
+        assert_eq!(out["children"], serde_json::json!([]));
+        // Seed 42 rolls a 3 on the gems 1d6; every row renders the same text.
+        assert_eq!(out["roll"], 3);
+    }
+
+    #[test]
+    fn roll_collection_invalid_expression_table_is_not_found() {
+        let out: serde_json::Value = serde_json::from_str(&roll_collection(
+            MANIFEST,
+            &expr_files_json(BAD_EXPR_YAML, "bad"),
+            "t.core.bad",
+            42,
+        ))
+        .unwrap();
+        // Broken tables are dropped at load, so rolling one reports not-found.
+        assert_eq!(
+            out,
+            serde_json::json!({"error": "table not found: 't.core.bad'"})
+        );
+    }
+
     #[test]
     fn parse_collection_does_not_validate_tables() {
         // A range gap is a validation error, not a parse error: the table
