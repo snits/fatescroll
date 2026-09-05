@@ -380,6 +380,36 @@ describe('auto-save: v1 to v2 migration', () => {
     expect(s.manifest.name).toBe('New Collection');
   });
 
+  it('discards a version-1 result whose bindings hold non-objects, without throwing', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: initialState().manifest,
+          dirs: [{ id: 'd1', path: 'core', namespace: 'collection' }],
+          tables: [
+            {
+              uid: 't1',
+              results: [
+                { rid: 'r1', min: '1', max: '6', text: 'x', chain: [], bindings: [42] },
+              ],
+            },
+          ],
+          view: 'manifest',
+          selUid: null,
+        },
+        version: 1,
+      }),
+    );
+
+    await expect(useForgeStore.persist.rehydrate()).resolves.not.toThrow();
+
+    const s = useForgeStore.getState();
+    expect(s.tables).toEqual([]);
+    expect(s.dirs).toEqual([]);
+    expect(s.manifest.name).toBe('New Collection');
+  });
+
   it('discards a future unknown version carrying tables, without logging', async () => {
     localStorage.setItem(
       STORAGE_KEY,
