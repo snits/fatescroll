@@ -182,7 +182,7 @@ describe('TableEditor header', () => {
 describe('TableEditor type toggle', () => {
   it('switching to compound and back to simple preserves the other type\'s fields', async () => {
     const user = userEvent.setup();
-    const results = [{ rid: 'r1', min: '1', max: '6', text: 'hit', chain: [] }];
+    const results = [{ rid: 'r1', min: '1', max: '6', text: 'hit', chain: [], bindings: [] }];
     useForgeStore.setState({
       dirs: [makeDir()],
       tables: [makeTable({ results })],
@@ -353,8 +353,8 @@ describe('TableEditor auto-fill', () => {
   it('derives contiguous kind and autofills ranges from expectedValues', async () => {
     const user = userEvent.setup();
     const results = [
-      { rid: 'r1', min: '', max: '', text: '', chain: [] },
-      { rid: 'r2', min: '', max: '', text: '', chain: [] },
+      { rid: 'r1', min: '', max: '', text: '', chain: [], bindings: [] },
+      { rid: 'r2', min: '', max: '', text: '', chain: [], bindings: [] },
     ];
     useForgeStore.setState({
       dirs: [makeDir()],
@@ -380,7 +380,7 @@ describe('TableEditor auto-fill', () => {
 
   it('derives digit kind for a D66 roll', async () => {
     const user = userEvent.setup();
-    const results = [{ rid: 'r1', min: '', max: '', text: '', chain: [] }];
+    const results = [{ rid: 'r1', min: '', max: '', text: '', chain: [], bindings: [] }];
     useForgeStore.setState({
       dirs: [makeDir()],
       tables: [makeTable({ roll: 'd66', results })],
@@ -418,7 +418,7 @@ describe('TableEditor auto-fill', () => {
           modOn: true,
           modMin: '1',
           modMax: '3',
-          results: [{ rid: 'r1', min: '', max: '', text: '', chain: [] }],
+          results: [{ rid: 'r1', min: '', max: '', text: '', chain: [], bindings: [] }],
         }),
       ],
       selUid: 'table-1',
@@ -465,7 +465,7 @@ describe('TableEditor results', () => {
       tables: [
         makeTable({
           roll: '2d6',
-          results: [{ rid: 'r1', min: '2', max: '5', text: '', chain: [] }],
+          results: [{ rid: 'r1', min: '2', max: '5', text: '', chain: [], bindings: [] }],
         }),
       ],
       selUid: 'table-1',
@@ -496,7 +496,7 @@ describe('TableEditor results', () => {
           modOn: true,
           modMin: '0',
           modMax: '0',
-          results: [{ rid: 'r1', min: '2', max: '5', text: '', chain: [] }],
+          results: [{ rid: 'r1', min: '2', max: '5', text: '', chain: [], bindings: [] }],
         }),
       ],
       selUid: 'table-1',
@@ -537,8 +537,8 @@ describe('TableEditor results', () => {
       tables: [
         makeTable({
           results: [
-            { rid: 'r1', min: '1', max: '3', text: '', chain: [] },
-            { rid: 'r2', min: '4', max: '6', text: '', chain: [] },
+            { rid: 'r1', min: '1', max: '3', text: '', chain: [], bindings: [] },
+            { rid: 'r2', min: '4', max: '6', text: '', chain: [], bindings: [] },
           ],
         }),
       ],
@@ -571,6 +571,7 @@ describe('TableEditor chains', () => {
               max: '6',
               text: '',
               chain: [{ rid: 'c1', struct: false, ref: chainRef, reroll: [] }],
+              bindings: [],
             },
           ],
         }),

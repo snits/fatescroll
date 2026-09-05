@@ -22,12 +22,19 @@ export interface ChainDraft {
   reroll: number[]; // only meaningful when struct
 }
 
+export interface BindingDraft {
+  rid: string;
+  name: string;
+  value: string;
+}
+
 export interface ResultDraft {
   rid: string;
   min: string;
   max: string;
   text: string;
   chain: ChainDraft[];
+  bindings: BindingDraft[];
 }
 
 export interface TableDraft {

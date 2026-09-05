@@ -85,7 +85,7 @@ export function TableEditor() {
   }
 
   function addResult() {
-    const result: ResultDraft = { rid: uid(), min: '', max: '', text: '', chain: [] };
+    const result: ResultDraft = { rid: uid(), min: '', max: '', text: '', chain: [], bindings: [] };
     patch({ results: [...current.results, result] });
   }
 

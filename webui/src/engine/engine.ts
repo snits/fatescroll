@@ -41,9 +41,15 @@ export interface ParsedChainModified {
 }
 export type ParsedChain = string | ParsedChainModified;
 
+export interface ParsedBinding {
+  name: string;
+  value: string;
+}
+
 export interface ParsedResult {
   min: number;
   max: number;
+  let?: ParsedBinding[];
   text: string | null;
   chain: ParsedChain[] | null;
 }

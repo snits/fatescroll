@@ -20,6 +20,7 @@ export function autofillRanges(
         max: String(v),
         text: prev?.text ?? '',
         chain: prev?.chain ?? [],
+        bindings: prev?.bindings ?? [],
       };
     });
   }

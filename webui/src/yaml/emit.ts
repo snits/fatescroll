@@ -102,6 +102,12 @@ export function tableYaml(t: TableDraft): string {
     if (t.results.length) lines.push('results:');
     for (const r of t.results) {
       lines.push(`  - min: ${numOr0(r.min)}`, `    max: ${numOr0(r.max)}`);
+      if (r.bindings.length) {
+        lines.push('    let:');
+        for (const b of r.bindings) {
+          lines.push(`      - name: ${yv(b.name)}`, `        value: ${yv(b.value)}`);
+        }
+      }
       if (r.text) lines.push(`    text: ${yv(r.text)}`);
       if (r.chain.length) {
         lines.push('    chain:');

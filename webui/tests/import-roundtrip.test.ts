@@ -101,6 +101,7 @@ describe('import round-trip', () => {
             min: '2',
             max: '15',
             text: 'Yes, and [1d4] omens',
+            bindings: [],
             chain: [
               { rid: 'c1', struct: false, ref: 'portent', reroll: [] },
               { rid: 'c2', struct: true, ref: 'oracle', reroll: [2, 3] },
@@ -138,5 +139,162 @@ describe('import round-trip', () => {
 
     expect(manifestYaml(loaded.manifest, loaded.dirs)).toBe(manifest1);
     expect(collectionFiles(loaded.dirs, loaded.tables)).toEqual(files1);
+  });
+
+  test('ordered let bindings survive parse -> drafts -> emit -> parse with sources intact', () => {
+    const manifest1 = [
+      'name: Bindings Round Trip',
+      'version: "1.0"',
+      'namespace: bindings',
+      'author: ~',
+      'min_tool_version: ~',
+      'directories:',
+      '  - path: core',
+      '    namespace: bindings.core',
+      '',
+    ].join('\n');
+    // Expression sources YAML would otherwise coerce: "1" and "true" must
+    // stay strings, and quotes/backslashes/newline escapes must survive.
+    const table1 = [
+      'id: gems',
+      'name: Gems',
+      'type: simple',
+      'roll: 1d6',
+      'results:',
+      '  - min: 1',
+      '    max: 6',
+      '    let:',
+      '      - name: one',
+      '        value: "1"',
+      '      - name: flag',
+      '        value: "true"',
+      "      - name: quoted",
+      "        value: '\"say \\\"hi\\\"\"'",
+      "      - name: backslash",
+      "        value: '\"a\\\\b\"'",
+      "      - name: newline",
+      "        value: '\"a\\nb\"'",
+      "    text: 'Found {= one}.'",
+      '',
+    ].join('\n');
+    const expected = [
+      { name: 'one', value: '1' },
+      { name: 'flag', value: 'true' },
+      { name: 'quoted', value: '"say \\"hi\\""' },
+      { name: 'backslash', value: '"a\\\\b"' },
+      { name: 'newline', value: '"a\\nb"' },
+    ];
+
+    const outcome1 = engine.parseCollection(manifest1, [{ path: 'core/gems.yaml', contents: table1 }]);
+    if (!outcome1.ok) throw new Error(`import failed: ${outcome1.errors.join('; ')}`);
+    expect(outcome1.collection.tables[0].table.results![0].let).toEqual(expected);
+
+    const loaded = mapDrafts(outcome1.collection);
+    expect(loaded.tables[0].results[0].bindings.map(({ name, value }) => ({ name, value }))).toEqual(
+      expected,
+    );
+
+    const files = collectionFiles(loaded.dirs, loaded.tables);
+    const outcome2 = engine.parseCollection(
+      manifest1,
+      files.map((f) => ({ path: f.path, contents: f.contents })),
+    );
+    if (!outcome2.ok) throw new Error(`re-import failed: ${outcome2.errors.join('; ')}`);
+    expect(outcome2.collection.tables[0].table.results![0].let).toEqual(expected);
+
+    expect(engine.validate(manifest1, files)).toEqual([]);
+  });
+
+  test('invalid expression strings stay editable through the round trip but still fail validation', () => {
+    const manifest1 = [
+      'name: Invalid Bindings',
+      'version: "1.0"',
+      'namespace: invalid',
+      'author: ~',
+      'min_tool_version: ~',
+      'directories:',
+      '  - path: core',
+      '    namespace: invalid.core',
+      '',
+    ].join('\n');
+    const table1 = [
+      'id: broken',
+      'name: Broken',
+      'type: simple',
+      'roll: 1d6',
+      'results:',
+      '  - min: 1',
+      '    max: 6',
+      '    let:',
+      '      - name: half',
+      "        value: '1 +'",
+      "    text: 'Kept {= half} for repair.'",
+      '',
+    ].join('\n');
+
+    const outcome1 = engine.parseCollection(manifest1, [{ path: 'core/broken.yaml', contents: table1 }]);
+    // Structurally the binding is fine (name + string value), so parsing keeps it.
+    if (!outcome1.ok) throw new Error(`import failed: ${outcome1.errors.join('; ')}`);
+
+    const loaded = mapDrafts(outcome1.collection);
+    expect(loaded.tables[0].results[0].bindings.map(({ name, value }) => ({ name, value }))).toEqual([
+      { name: 'half', value: '1 +' },
+    ]);
+
+    const files = collectionFiles(loaded.dirs, loaded.tables);
+    const outcome2 = engine.parseCollection(
+      manifest1,
+      files.map((f) => ({ path: f.path, contents: f.contents })),
+    );
+    if (!outcome2.ok) throw new Error(`re-import failed: ${outcome2.errors.join('; ')}`);
+    expect(outcome2.collection.tables[0].table.results![0].let).toEqual([
+      { name: 'half', value: '1 +' },
+    ]);
+
+    // The preserved string is genuinely invalid — repair is still required.
+    expect(engine.validate(manifest1, files).length).toBeGreaterThan(0);
+  });
+
+  test('structurally malformed binding YAML still fails parsing', () => {
+    const manifest1 = [
+      'name: Malformed Bindings',
+      'version: "1.0"',
+      'namespace: malformed',
+      'author: ~',
+      'min_tool_version: ~',
+      'directories:',
+      '  - path: core',
+      '    namespace: malformed.core',
+      '',
+    ].join('\n');
+    const cases: Array<[string, string[]]> = [
+      // Non-string binding value: serde rejects the integer.
+      [
+        'non-string value',
+        ['      - name: half', '        value: 42'],
+      ],
+      // Unknown binding field: deny_unknown_fields rejects `extra`.
+      [
+        'unknown field',
+        ['      - name: half', "        value: '1 + 1'", '        extra: true'],
+      ],
+    ];
+    for (const [label, letLines] of cases) {
+      const table1 = [
+        'id: broken',
+        'name: Broken',
+        'type: simple',
+        'roll: 1d6',
+        'results:',
+        '  - min: 1',
+        '    max: 6',
+        '    let:',
+        ...letLines,
+        "    text: 'Never imports.'",
+        '',
+      ].join('\n');
+      const outcome = engine.parseCollection(manifest1, [{ path: 'core/broken.yaml', contents: table1 }]);
+      expect(outcome.ok, label).toBe(false);
+    }
   });
 });

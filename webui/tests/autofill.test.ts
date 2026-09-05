@@ -6,7 +6,7 @@ import { autofillRanges } from '../src/logic/autofill';
 import type { ResultDraft } from '../src/model/types';
 
 function makeResult(overrides: Partial<ResultDraft> = {}): ResultDraft {
-  return { rid: 'r', min: '0', max: '0', text: '', chain: [], ...overrides };
+  return { rid: 'r', min: '0', max: '0', text: '', chain: [], bindings: [], ...overrides };
 }
 
 function range(lo: number, hi: number): number[] {
@@ -111,5 +111,36 @@ describe('autofillRanges', () => {
       ['-1', '3'],
       ['4', '8'],
     ]);
+  });
+
+  it('digit kind preserves bindings on retained rows and defaults fresh rows to empty', () => {
+    const kept = [
+      makeResult({
+        rid: 'first',
+        text: 'Alpha',
+        bindings: [{ rid: 'b1', name: 'one', value: '1' }],
+      }),
+      makeResult({
+        rid: 'second',
+        text: 'Beta',
+        bindings: [{ rid: 'b2', name: 'flag', value: 'true' }],
+      }),
+    ];
+    const out = autofillRanges(kept, [11, 12, 13], 'digit');
+
+    expect(out).toHaveLength(3);
+    expect(out[0].bindings).toEqual([{ rid: 'b1', name: 'one', value: '1' }]);
+    expect(out[1].bindings).toEqual([{ rid: 'b2', name: 'flag', value: 'true' }]);
+    expect(out[2].bindings).toEqual([]);
+  });
+
+  it('contiguous kind preserves bindings with the rest of each retained result', () => {
+    const results = [
+      makeResult({ rid: 'a', bindings: [{ rid: 'b1', name: 'one', value: '1' }] }),
+      makeResult({ rid: 'b', bindings: [] }),
+    ];
+    const out = autofillRanges(results, range(1, 6), 'contiguous');
+    expect(out[0].bindings).toEqual([{ rid: 'b1', name: 'one', value: '1' }]);
+    expect(out[1].bindings).toEqual([]);
   });
 });

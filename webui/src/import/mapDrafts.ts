@@ -34,6 +34,7 @@ function mapResult(r: ParsedResult): ResultDraft {
     max: String(r.max),
     text: r.text ?? '',
     chain: (r.chain ?? []).map(mapChain),
+    bindings: (r.let ?? []).map((b) => ({ rid: uid(), name: b.name, value: b.value })),
   };
 }
 

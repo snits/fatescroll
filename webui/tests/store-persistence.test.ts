@@ -200,7 +200,7 @@ describe('auto-save: defensive fallback', () => {
       modMin: '',
       modMax: '',
       notes: ['a note'],
-      results: [{ rid: 'r1', min: '1', max: '6', text: 'fate stirs', chain: [] }],
+      results: [{ rid: 'r1', min: '1', max: '6', text: 'fate stirs', chain: [], bindings: [] }],
       tableRefs: [],
     };
     localStorage.setItem(
@@ -292,5 +292,213 @@ describe('auto-save: defensive fallback', () => {
     await useForgeStore.persist.rehydrate();
 
     expect(useForgeStore.getState().rollLines).toBeNull();
+  });
+});
+
+describe('auto-save: v1 to v2 migration', () => {
+  it('rehydrates a version-1 document with empty binding arrays on every result', async () => {
+    const table = {
+      uid: 't1',
+      dirId: 'd1',
+      stem: 'oracle',
+      name: 'Oracle',
+      type: 'simple',
+      tags: ['omen'],
+      roll: '1d6',
+      modOn: false,
+      modMin: '',
+      modMax: '',
+      notes: ['a note'],
+      results: [
+        {
+          rid: 'r1',
+          min: '1',
+          max: '6',
+          text: 'fate stirs',
+          chain: [{ rid: 'c1', struct: false, ref: 'omen', reroll: [] }],
+        },
+      ],
+      tableRefs: [],
+    };
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: initialState().manifest,
+          dirs: [{ id: 'd1', path: 'core', namespace: 'collection' }],
+          tables: [table],
+          view: 'table',
+          selUid: 't1',
+        },
+        version: 1,
+      }),
+    );
+
+    await useForgeStore.persist.rehydrate();
+
+    const s = useForgeStore.getState();
+    expect(s.view).toBe('table');
+    expect(s.selUid).toBe('t1');
+    // All original data survives: text, chains, notes, and editor ids.
+    expect(s.tables[0]).toMatchObject({
+      uid: 't1',
+      stem: 'oracle',
+      name: 'Oracle',
+      notes: ['a note'],
+    });
+    expect(s.tables[0].results[0]).toMatchObject({
+      rid: 'r1',
+      min: '1',
+      max: '6',
+      text: 'fate stirs',
+      chain: [{ rid: 'c1', struct: false, ref: 'omen', reroll: [] }],
+    });
+    // ...and every result gains an empty values list.
+    expect(s.tables[0].results[0].bindings).toEqual([]);
+  });
+
+  it('discards malformed version-1 data without throwing', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: initialState().manifest,
+          dirs: [{ id: 'd1', path: 'core', namespace: 'collection' }],
+          tables: [{ uid: 't1', results: 'not-an-array' }],
+          view: 'manifest',
+          selUid: null,
+        },
+        version: 1,
+      }),
+    );
+
+    await expect(useForgeStore.persist.rehydrate()).resolves.not.toThrow();
+
+    const s = useForgeStore.getState();
+    expect(s.tables).toEqual([]);
+    expect(s.dirs).toEqual([]);
+    expect(s.manifest.name).toBe('New Collection');
+  });
+
+  it('discards a future unknown version carrying tables, without logging', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: { ...initialState().manifest, name: 'Future Schema' },
+          dirs: [{ id: 'd1', path: 'core', namespace: 'collection' }],
+          tables: [
+            {
+              uid: 't1',
+              dirId: 'd1',
+              stem: 'oracle',
+              name: 'Oracle',
+              type: 'simple',
+              tags: [],
+              roll: '1d6',
+              modOn: false,
+              modMin: '',
+              modMax: '',
+              notes: [],
+              results: [
+                {
+                  rid: 'r1',
+                  min: '1',
+                  max: '6',
+                  text: 'fate stirs',
+                  chain: [],
+                  bindings: [{ rid: 'b1', name: 'one', value: '1' }],
+                },
+              ],
+              tableRefs: [],
+            },
+          ],
+          view: 'table',
+          selUid: 't1',
+        },
+        version: 99,
+      }),
+    );
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await useForgeStore.persist.rehydrate();
+
+      expect(useForgeStore.getState().manifest.name).toBe('New Collection');
+      expect(useForgeStore.getState().tables).toEqual([]);
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('round-trips version-2 binding names, sources, order, and row ids', async () => {
+    const bindings = [
+      { rid: 'b1', name: 'one', value: '1' },
+      { rid: 'b2', name: 'price', value: 'count * 25' },
+    ];
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: initialState().manifest,
+          dirs: [{ id: 'd1', path: 'core', namespace: 'collection' }],
+          tables: [
+            {
+              uid: 't1',
+              dirId: 'd1',
+              stem: 'gems',
+              name: 'Gems',
+              type: 'simple',
+              tags: [],
+              roll: '1d6',
+              modOn: false,
+              modMin: '',
+              modMax: '',
+              notes: [],
+              results: [{ rid: 'r1', min: '1', max: '6', text: 'Found {= one}.', chain: [], bindings }],
+              tableRefs: [],
+            },
+          ],
+          view: 'table',
+          selUid: 't1',
+        },
+        version: 2,
+      }),
+    );
+
+    await useForgeStore.persist.rehydrate();
+
+    expect(useForgeStore.getState().tables[0].results[0].bindings).toEqual(bindings);
+  });
+
+  it('migrates version-1 data without logging and without restoring a preview', async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          manifest: initialState().manifest,
+          dirs: [],
+          tables: [],
+          rollLines: [{ indent: 0, text: 'should not survive' }],
+        },
+        version: 1,
+      }),
+    );
+    useForgeStore.setState({ rollLines: [{ indent: 0, text: 'stale' }] });
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await useForgeStore.persist.rehydrate();
+
+      expect(useForgeStore.getState().rollLines).toBeNull();
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });

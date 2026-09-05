@@ -25,7 +25,7 @@ function mkTable(overrides: Partial<TableDraft> = {}): TableDraft {
 }
 
 function mkResult(overrides: Partial<ResultDraft> = {}): ResultDraft {
-  return { rid: 'r1', min: '1', max: '1', text: '', chain: [], ...overrides };
+  return { rid: 'r1', min: '1', max: '1', text: '', chain: [], bindings: [], ...overrides };
 }
 
 function mkChain(overrides: Partial<ChainDraft> = {}): ChainDraft {
@@ -273,6 +273,81 @@ results:
     max: 6
 `,
     );
+  });
+
+  it('emits ordered let bindings between the range and the text, quoting expression sources', () => {
+    const t = mkTable({
+      stem: 'gems',
+      name: 'Gems',
+      results: [
+        mkResult({
+          min: '1',
+          max: '6',
+          text: 'Found {= one}.',
+          bindings: [
+            { rid: 'b1', name: 'one', value: '1' },
+            { rid: 'b2', name: 'flag', value: 'true' },
+            { rid: 'b3', name: 'price', value: 'count * 25' },
+          ],
+        }),
+      ],
+    });
+    expect(tableYaml(t)).toBe(
+      `id: gems
+name: Gems
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: one
+        value: "1"
+      - name: flag
+        value: "true"
+      - name: price
+        value: count * 25
+    text: "Found {= one}."
+`,
+    );
+  });
+
+  it('escapes quotes, backslashes, and newline escapes in binding values', () => {
+    const t = mkTable({
+      stem: 'tricky',
+      name: 'Tricky',
+      results: [
+        mkResult({
+          bindings: [
+            { rid: 'b1', name: 'quoted', value: '"say \\"hi\\""' },
+            { rid: 'b2', name: 'backslash', value: '"a\\\\b"' },
+            { rid: 'b3', name: 'newline', value: '"a\\nb"' },
+          ],
+        }),
+      ],
+    });
+    expect(tableYaml(t)).toBe(
+      `id: tricky
+name: Tricky
+type: simple
+roll: 1d6
+results:
+  - min: 1
+    max: 1
+    let:
+      - name: quoted
+        value: "\\"say \\\\\\"hi\\\\\\"\\""
+      - name: backslash
+        value: "\\"a\\\\\\\\b\\""
+      - name: newline
+        value: "\\"a\\\\nb\\""
+`,
+    );
+  });
+
+  it('omits the let header when a result has no bindings', () => {
+    const t = mkTable({ stem: 'plain', name: 'Plain', results: [mkResult({ bindings: [] })] });
+    expect(tableYaml(t)).not.toContain('let:');
   });
 });
 

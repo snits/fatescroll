@@ -5,9 +5,11 @@
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import { execa } from 'execa';
 import { fileURLToPath } from 'node:url';
+import { strFromU8, unzipSync } from 'fflate';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { buildCollectionZip } from '../src/export/zip';
 import { collectionFiles, manifestYaml } from '../src/yaml/emit';
 import type { ChainDraft, Dir, ManifestState, ResultDraft, TableDraft } from '../src/model/types';
 
@@ -24,7 +26,7 @@ afterAll(() => {
 });
 
 function mkResult(overrides: Partial<ResultDraft> = {}): ResultDraft {
-  return { rid: 'r', min: '1', max: '1', text: '', chain: [], ...overrides };
+  return { rid: 'r', min: '1', max: '1', text: '', chain: [], bindings: [], ...overrides };
 }
 
 function mkChain(overrides: Partial<ChainDraft> = {}): ChainDraft {
@@ -202,6 +204,73 @@ describe('golden round-trip through the real fatescroll CLI', () => {
       const validate = await execa(bin, ['validate', '--collection', manifestPath], { reject: false });
       expect(validate.exitCode, validate.stderr + validate.stdout).not.toBe(0);
       expect(validate.stderr + validate.stdout).toMatch(/gap|missing values/i);
+    },
+    120_000,
+  );
+
+  test(
+    'emits ordered let bindings through ZIP export and real CLI validation',
+    async () => {
+      const manifest: ManifestState = {
+        name: 'Bindings Collection',
+        version: '1.0',
+        namespace: 'bindings',
+        author: '',
+        minToolVersion: '',
+      };
+      const dirs: Dir[] = [{ id: 'd-core', path: 'core', namespace: 'bindings.core' }];
+      const tables = [
+        mkTable({
+          uid: 't-gems',
+          dirId: 'd-core',
+          stem: 'gems',
+          name: 'Gems',
+          roll: '1d6',
+          results: [
+            mkResult({
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.',
+              bindings: [
+                { rid: 'b1', name: 'count', value: 'roll("1d1")' },
+                { rid: 'b2', name: 'price', value: 'count * 25' },
+              ],
+            }),
+          ],
+        }),
+      ];
+
+      const manifestContents = manifestYaml(manifest, dirs);
+      const files = collectionFiles(dirs, tables);
+
+      // No missing or reordered let: the emitted block keeps order, names, sources.
+      expect(files[0].contents).toContain(
+        '    let:\n      - name: count\n        value: roll("1d1")\n      - name: price\n        value: count * 25\n',
+      );
+
+      // The ZIP export path carries the same bytes.
+      const zip = buildCollectionZip('bindings-collection', manifestContents, files);
+      const unzipped = unzipSync(zip);
+      expect(strFromU8(unzipped['bindings-collection/core/gems.yaml'])).toBe(files[0].contents);
+
+      // The real CLI validates the exported collection.
+      const tmp = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fatescroll-bindings-'));
+      tmpDirs.push(tmp);
+      for (const [entryPath, contents] of Object.entries(unzipped)) {
+        const target = path.join(tmp, entryPath);
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.writeFileSync(target, Buffer.from(contents));
+      }
+
+      const validate = await execa(
+        bin,
+        ['validate', '--collection', path.join(tmp, 'bindings-collection', 'manifest.yaml')],
+        {
+          reject: false,
+        },
+      );
+      expect(validate.exitCode, validate.stderr + validate.stdout).toBe(0);
     },
     120_000,
   );

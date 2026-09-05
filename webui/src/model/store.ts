@@ -103,6 +103,34 @@ function coerceDocument(persisted: unknown): PersistedDoc | null {
   };
 }
 
+// Migrates a version-1 persisted document to the version-2 shape by adding
+// `bindings: []` to every result while preserving all other data and editor
+// ids. Nested table/result container shapes are checked before traversal;
+// malformed version-1 data returns undefined and follows the existing discard
+// path without throwing.
+function migrateV1ToV2(persisted: unknown): Record<string, unknown> | undefined {
+  if (!isObject(persisted)) return undefined;
+  if (!isObject(persisted.manifest)) return undefined;
+  if (!Array.isArray(persisted.dirs) || !persisted.dirs.every(isObject)) return undefined;
+  if (!Array.isArray(persisted.tables) || !persisted.tables.every(isObject)) return undefined;
+  const tables: Record<string, unknown>[] = [];
+  for (const table of persisted.tables as Record<string, unknown>[]) {
+    if (table.results === undefined) {
+      tables.push(table);
+      continue;
+    }
+    if (!Array.isArray(table.results) || !table.results.every(isObject)) return undefined;
+    const results: Record<string, unknown>[] = [];
+    for (const result of table.results as Record<string, unknown>[]) {
+      if (result.bindings === undefined) results.push({ ...result, bindings: [] });
+      else if (Array.isArray(result.bindings)) results.push(result);
+      else return undefined;
+    }
+    tables.push({ ...table, results });
+  }
+  return { ...persisted, tables };
+}
+
 // Finds the uid of the surviving table adjacent to a just-removed one: the
 // next table after it, falling back to the previous one, else none.
 function selectNextSurviving(
@@ -178,7 +206,7 @@ const forgeState: StateCreator<ForgeState, [['zustand/persist', unknown]], []> =
         modMin: '',
         modMax: '',
         notes: [],
-        results: [{ rid: uid(), min: '1', max: '6', text: '', chain: [] }],
+        results: [{ rid: uid(), min: '1', max: '6', text: '', chain: [], bindings: [] }],
         tableRefs: [],
       };
       return withClearedRoll({
@@ -229,11 +257,15 @@ export const useForgeStore = create<ForgeState>()(
     // Bump this whenever the persisted shape (PersistedDoc / TableDraft / Dir /
     // ManifestState) changes: an old-schema save is dropped instead of
     // rehydrated into a mismatched shape that could crash the editor.
-    version: 1,
-    // Returning undefined discards a stored draft on a version mismatch. It
-    // also stands in for the default migration so zustand does not log an error
-    // to the console when an old draft is dropped.
-    migrate: () => undefined,
+    version: 2,
+    // Version 1 drafts gain `bindings: []` on every result. Returning
+    // undefined discards a stored draft on an unknown version mismatch. It
+    // also stands in for the default migration so zustand does not log an
+    // error to the console when an old draft is dropped.
+    migrate: (persisted, version) => {
+      if (version === 1) return migrateV1ToV2(persisted);
+      return undefined;
+    },
     partialize: ({ manifest, dirs, tables, view, selUid }): PersistedDoc => ({
       manifest,
       dirs,

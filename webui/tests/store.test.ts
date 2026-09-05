@@ -85,7 +85,7 @@ describe('addTable', () => {
       notes: [],
       tableRefs: [],
     });
-    expect(table.results).toEqual([{ rid: table.results[0].rid, min: '1', max: '6', text: '', chain: [] }]);
+    expect(table.results).toEqual([{ rid: table.results[0].rid, min: '1', max: '6', text: '', chain: [], bindings: [] }]);
     expect(state.view).toBe('table');
     expect(state.selUid).toBe(table.uid);
   });

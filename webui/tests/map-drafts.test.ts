@@ -120,6 +120,46 @@ describe('mapDrafts', () => {
     expect(tables[0].results[0].chain).toEqual([]);
   });
 
+  it('maps ordered let bindings to BindingDrafts with fresh row ids, preserving names and sources', () => {
+    const p = parsed();
+    p.tables[0].table.results![0].let = [
+      { name: 'one', value: '1' },
+      { name: 'flag', value: 'true' },
+      { name: 'price', value: 'count * 25' },
+    ];
+    const { tables } = mapDrafts(p);
+    const r = tables[0].results[0];
+    expect(r.bindings.map(({ name, value }) => ({ name, value }))).toEqual([
+      { name: 'one', value: '1' },
+      { name: 'flag', value: 'true' },
+      { name: 'price', value: 'count * 25' },
+    ]);
+    // Expression sources stay strings — never converted into JS numbers.
+    expect(typeof r.bindings[0].value).toBe('string');
+    // Every binding row gets its own editor id, distinct from the result
+    // and chain rows.
+    const ids = [r.rid, ...r.chain.map((c) => c.rid), ...r.bindings.map((b) => b.rid)];
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const b of r.bindings) expect(b.rid).toBeTruthy();
+  });
+
+  it('maps a missing let to an empty bindings array', () => {
+    const p = parsed();
+    delete p.tables[0].table.results![0].let;
+    const { tables } = mapDrafts(p);
+    expect(tables[0].results[0].bindings).toEqual([]);
+  });
+
+  it('assigns fresh binding row ids on every import', () => {
+    const p = parsed();
+    p.tables[0].table.results![0].let = [{ name: 'one', value: '1' }];
+    const first = mapDrafts(p).tables[0].results[0].bindings[0].rid;
+    const second = mapDrafts(p).tables[0].results[0].bindings[0].rid;
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(first).not.toBe(second);
+  });
+
   it('throws when a table matches no manifest directory', () => {
     const p = parsed();
     p.tables[0].namespace = 'kal-arath.nonexistent';
