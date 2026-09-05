@@ -17,10 +17,8 @@ pub mod validator;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
-#[cfg(test)]
 mod expression;
 
-#[cfg(test)]
 mod result_text;
 
 use std::path::Path;

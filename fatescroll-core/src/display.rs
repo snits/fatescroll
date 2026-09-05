@@ -80,6 +80,12 @@ pub fn format_table(fqid: &str, table: &Table, show_notes: bool) -> String {
                     width = range_width
                 )
                 .unwrap();
+                // Declared binding sources in order, plus the source template
+                // above, are shown verbatim: `show` evaluates nothing and
+                // draws no RNG.
+                for binding in &entry.bindings {
+                    writeln!(out, "      let {} = {}", binding.name, binding.value).unwrap();
+                }
             }
         }
         Table::Compound {
@@ -109,7 +115,7 @@ pub fn format_table(fqid: &str, table: &Table, show_notes: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ChainRef, ResultEntry};
+    use crate::models::{ChainRef, ResultBinding, ResultEntry};
 
     fn simple_table() -> Table {
         Table::Simple {
@@ -501,5 +507,52 @@ mod tests {
         let output = format_table("ns.t", &table, false);
         let line = output.lines().find(|l| l.contains('x')).unwrap();
         assert_eq!(line, "  1  x");
+    }
+
+    #[test]
+    fn format_table_shows_source_bindings_in_order_without_evaluation() {
+        // `show` prints declared binding sources in order plus the source
+        // template. It takes no RNG and evaluates nothing: `roll()` bindings
+        // render as source text, never as drawn values.
+        let table = Table::Simple {
+            id: "gems".into(),
+            name: "Gems".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                bindings: vec![
+                    ResultBinding {
+                        name: "count".into(),
+                        value: "roll(\"1d4\")".into(),
+                    },
+                    ResultBinding {
+                        name: "price".into(),
+                        value: "count * 25".into(),
+                    },
+                ],
+                text: Some("Found {= count} worth {= price}.".into()),
+                chain: None,
+            }],
+        };
+        let output = format_table("ns.gems", &table, false);
+        // Source template, verbatim and unevaluated.
+        assert!(
+            output.contains("Found {= count} worth {= price}."),
+            "got:\n{output}"
+        );
+        // Ordered declared bindings with their sources.
+        let count_pos = output
+            .find("let count")
+            .unwrap_or_else(|| panic!("no count binding in:\n{output}"));
+        let price_pos = output
+            .find("let price")
+            .unwrap_or_else(|| panic!("no price binding in:\n{output}"));
+        assert!(count_pos < price_pos, "bindings out of order in:\n{output}");
+        assert!(output.contains("roll(\"1d4\")"), "got:\n{output}");
+        assert!(output.contains("count * 25"), "got:\n{output}");
     }
 }

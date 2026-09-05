@@ -215,8 +215,21 @@ pub fn validate_table(table: &Table) -> Result<(), ValidationError> {
                     reason: e.to_string(),
                 }
             })?;
-            for entry in results {
+            for (index, entry) in results.iter().enumerate() {
                 validate_result_entry(entry, name)?;
+                // Prepare every row, including unselected ones: an invalid
+                // binding or template anywhere fails the table. `prepare`
+                // parses and checks only (no RNG, no evaluation), so valid
+                // but unreachable runtime branches still validate.
+                crate::result_text::prepare(entry).map_err(|e| {
+                    ValidationError::InvalidResultExpression {
+                        table: name.clone(),
+                        entry: index,
+                        location: e.location,
+                        offset: e.offset,
+                        reason: e.reason,
+                    }
+                })?;
             }
 
             if let Some((sides, count)) = crate::dice::digit_dice_params(&parsed) {
@@ -422,7 +435,7 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ChainRef, ResultEntry, Table};
+    use crate::models::{ChainRef, ResultBinding, ResultEntry, Table};
 
     #[test]
     fn outcome_envelope_modifier_shifts_analytic_range() {
@@ -1350,5 +1363,93 @@ mod tests {
         // must not trigger; width is kept small so the width guard doesn't mask it.
         let max = i32::MAX as i64;
         assert_eq!(bounded_envelope(max - 5, max), Ok((i32::MAX - 5, i32::MAX)));
+    }
+
+    #[test]
+    fn validate_table_rejects_invalid_expression_in_unselected_row() {
+        // Row index 1 is never selected by this test, but validation prepares
+        // every row: its unknown binding name must still fail the table.
+        let table = Table::Simple {
+            id: "expr".into(),
+            name: "Expr".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![
+                ResultEntry {
+                    min: 1,
+                    max: 3,
+                    text: Some("Low".into()),
+                    chain: None,
+                    bindings: vec![],
+                },
+                ResultEntry {
+                    min: 4,
+                    max: 6,
+                    text: Some("High".into()),
+                    chain: None,
+                    bindings: vec![ResultBinding {
+                        name: "bad".into(),
+                        value: "nosuchvar + 1".into(),
+                    }],
+                },
+            ],
+        };
+        let err = validate_table(&table).unwrap_err();
+        match err {
+            ValidationError::InvalidResultExpression {
+                table,
+                entry,
+                location,
+                reason,
+                ..
+            } => {
+                assert_eq!(table, "Expr");
+                assert_eq!(entry, 1);
+                assert!(location.contains("bad"), "got: {location}");
+                assert!(reason.contains("nosuchvar"), "got: {reason}");
+            }
+            other => panic!("expected InvalidResultExpression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn invalid_result_expression_displays_one_based_entry() {
+        // D1: `entry` is stored zero-based; the Display string renders it
+        // one-based for humans.
+        let err = ValidationError::InvalidResultExpression {
+            table: "T".into(),
+            entry: 0,
+            location: "let[0].x".into(),
+            offset: 3,
+            reason: "boom".into(),
+        };
+        let rendered = err.to_string();
+        assert!(rendered.contains("result 1"), "got: {rendered}");
+        assert!(!rendered.contains("result 0"), "got: {rendered}");
+    }
+
+    #[test]
+    fn validate_table_accepts_unreachable_runtime_error_branch() {
+        // `1 / 0` in a dead branch fails only at render time: validation runs
+        // `prepare` (parse + check, no RNG, no evaluation) and must not
+        // constant-fold reachable runtime failures into validation errors.
+        let table = Table::Simple {
+            id: "lazy".into(),
+            name: "Lazy".into(),
+            tags: vec![],
+            notes: vec![],
+            roll: "1d6".into(),
+            modifier_range: None,
+            results: vec![ResultEntry {
+                min: 1,
+                max: 6,
+                text: Some("Found {= if false then 1 / 0 else 1} gold.".into()),
+                chain: None,
+                bindings: vec![],
+            }],
+        };
+        assert!(validate_table(&table).is_ok());
     }
 }

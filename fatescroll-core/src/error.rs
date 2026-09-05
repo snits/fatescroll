@@ -106,6 +106,15 @@ pub enum ValidationError {
         "dice expression produces an outcome envelope too wide to validate (width {width}, max {max}) in table '{table}'"
     )]
     DiceRangeTooWide { table: String, width: i64, max: i64 },
+
+    #[error("invalid result expression in table '{table}' result {n} at {location} (offset {offset}): {reason}", n = entry + 1)]
+    InvalidResultExpression {
+        table: String,
+        entry: usize,
+        location: String,
+        offset: usize,
+        reason: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -160,4 +169,13 @@ pub enum RollError {
 
     #[error("table '{table}' does not support direct value lookup (it is a compound table)")]
     DirectValueNotSupported { table: String },
+
+    #[error("result expression failed in table '{table}' result {n} at {location} (offset {offset}): {reason}", n = entry + 1)]
+    ResultExpression {
+        table: String,
+        entry: usize,
+        location: String,
+        offset: usize,
+        reason: String,
+    },
 }

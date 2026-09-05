@@ -1,17 +1,12 @@
 // ABOUTME: Roll execution engine for simple and compound tables.
 // ABOUTME: Handles dice evaluation, chain resolution, and result text interpolation.
 
-use regex::Regex;
-use std::sync::LazyLock;
-
 use crate::error::RollError;
 use crate::models::{RollResult, Table};
 use crate::registry::Registry;
 
 const MAX_CHAIN_DEPTH: usize = 10;
 const MAX_REROLL_ATTEMPTS: usize = 100;
-
-static DICE_INTERPOLATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
 
 /// How the top-level lookup value for a table is determined.
 ///
@@ -132,20 +127,20 @@ fn roll_recursive(
             modifier_range,
             ..
         } => {
-            let (lookup_value, entry) = match lookup {
+            let (lookup_value, selected) = match lookup {
                 // Direct lookup: skip the dice roll entirely and find the entry
                 // covering the caller-supplied value. No clamping — a value outside
                 // the entries is an out-of-range error, not silently pinned to the
                 // nearest entry (that distinguishes --value from --modifier).
                 Lookup::Direct(value) => {
-                    let entry = results
+                    let index = results
                         .iter()
-                        .find(|e| value >= e.min && value <= e.max)
+                        .position(|e| value >= e.min && value <= e.max)
                         .ok_or_else(|| RollError::RollOutOfRange {
                             table: name.clone(),
                             value: value as i64,
                         })?;
-                    (value, entry.clone())
+                    (value, index)
                 }
                 Lookup::Dice { modifier } => {
                     if modifier.is_some() && modifier_range.is_none() {
@@ -202,9 +197,9 @@ fn roll_recursive(
                             None => roll_i32,
                         };
 
-                        let entry = results
+                        let index = results
                             .iter()
-                            .find(|e| lookup >= e.min && lookup <= e.max)
+                            .position(|e| lookup >= e.min && lookup <= e.max)
                             .ok_or_else(|| RollError::RollOutOfRange {
                                 table: name.clone(),
                                 value: lookup as i64,
@@ -229,12 +224,33 @@ fn roll_recursive(
                             continue;
                         }
 
-                        break (lookup, entry.clone());
+                        break (lookup, index);
                     }
                 }
             };
 
-            let text = entry.text.as_ref().map(|t| interpolate_dice(t, rng));
+            let entry = &results[selected];
+            // Prepare and render the selected row BEFORE any chain rolls:
+            // rendering errors abort before children (no partial RollResult).
+            // The lookup that selected the row (clamped modifier result,
+            // direct --value, D66 digit) seeds `value`; chains roll below
+            // with their own fresh lookups and scopes.
+            let prepared =
+                crate::result_text::prepare(entry).map_err(|e| RollError::ResultExpression {
+                    table: name.clone(),
+                    entry: selected,
+                    location: e.location,
+                    offset: e.offset,
+                    reason: e.reason,
+                })?;
+            let text = crate::result_text::render(&prepared, i64::from(lookup_value), rng)
+                .map_err(|e| RollError::ResultExpression {
+                    table: name.clone(),
+                    entry: selected,
+                    location: e.location,
+                    offset: e.offset,
+                    reason: e.reason,
+                })?;
 
             let mut children = Vec::new();
             if let Some(chains) = &entry.chain {
@@ -309,25 +325,10 @@ fn checked_total_to_i32(total: i64) -> Option<i32> {
     i32::try_from(total).ok()
 }
 
-fn interpolate_dice(text: &str, rng: &mut impl diceman::Rng) -> String {
-    DICE_INTERPOLATION
-        .replace_all(text, |caps: &regex::Captures| {
-            let expr = &caps[1];
-            match diceman::roll_with_rng(expr, rng) {
-                Ok(result) => match result.outcome.as_numeric() {
-                    Some(v) => v.to_string(),
-                    None => caps[0].to_string(),
-                },
-                Err(_) => caps[0].to_string(),
-            }
-        })
-        .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ChainRef, ResultEntry, Table};
+    use crate::models::{ChainRef, ResultBinding, ResultEntry, Table};
     use crate::registry::Registry;
 
     fn build_test_registry() -> Registry {
@@ -1478,5 +1479,326 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn expression_registry() -> Registry {
+        let mut reg = Registry::new();
+        reg.register(
+            "t.expr".into(),
+            Table::Simple {
+                id: "expr".into(),
+                name: "Expr".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 3,
+                        text: Some("Low".into()),
+                        chain: None,
+                        bindings: vec![],
+                    },
+                    ResultEntry {
+                        min: 4,
+                        max: 6,
+                        bindings: vec![ResultBinding {
+                            name: "doubled".into(),
+                            value: "value * 2".into(),
+                        }],
+                        text: Some("Doubled {= doubled}".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        reg
+    }
+
+    #[test]
+    fn roll_renders_selected_row_with_lookup_as_value() {
+        // Direct value 5 selects row index 1; its binding must see the
+        // post-selection lookup (5), not a fresh roll.
+        let reg = expression_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "t.expr", 5, &mut rng).unwrap();
+        assert_eq!(result.roll, Some(5));
+        assert_eq!(result.text.as_deref(), Some("Doubled 10"));
+    }
+
+    #[test]
+    fn roll_result_expression_error_displays_one_based_entry() {
+        // D1: `entry` is stored zero-based; the Display string renders it
+        // one-based for humans.
+        let err = RollError::ResultExpression {
+            table: "T".into(),
+            entry: 0,
+            location: "text".into(),
+            offset: 0,
+            reason: "boom".into(),
+        };
+        let rendered = err.to_string();
+        assert!(rendered.contains("result 1"), "got: {rendered}");
+        assert!(!rendered.contains("result 0"), "got: {rendered}");
+    }
+
+    #[test]
+    fn roll_maps_selected_row_prepare_error_with_zero_based_index() {
+        // Row index 1 carries an invalid binding (unknown name). Selecting it
+        // surfaces RollError::ResultExpression with the zero-based index.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.badexpr".into(),
+            Table::Simple {
+                id: "badexpr".into(),
+                name: "BadExpr".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 3,
+                        text: Some("Low".into()),
+                        chain: None,
+                        bindings: vec![],
+                    },
+                    ResultEntry {
+                        min: 4,
+                        max: 6,
+                        text: Some("High".into()),
+                        chain: None,
+                        bindings: vec![ResultBinding {
+                            name: "bad".into(),
+                            value: "nosuchvar + 1".into(),
+                        }],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = match roll_with_rng_value(&reg, "t.badexpr", 5, &mut rng) {
+            Ok(result) => panic!("expected error, got {:?}", result.text),
+            Err(err) => err,
+        };
+        match err {
+            RollError::ResultExpression {
+                table,
+                entry,
+                location,
+                reason,
+                ..
+            } => {
+                assert_eq!(table, "BadExpr");
+                assert_eq!(entry, 1);
+                assert!(location.contains("bad"), "got: {location}");
+                assert!(reason.contains("nosuchvar"), "got: {reason}");
+            }
+            other => panic!("expected ResultExpression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn roll_render_error_aborts_before_chains() {
+        // `1 / 0` prepares fine but fails at render; the error must abort
+        // before the chained child rolls (no partial RollResult).
+        let mut reg = Registry::new();
+        reg.register(
+            "t.parent".into(),
+            Table::Simple {
+                id: "parent".into(),
+                name: "Parent".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d4".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Broken {= 1 / 0}".into()),
+                    chain: Some(vec![ChainRef::Simple("child".into())]),
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "t.child".into(),
+            Table::Simple {
+                id: "child".into(),
+                name: "Child".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("C".into()),
+                    chain: None,
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let err = match roll_with_rng_value(&reg, "t.parent", 2, &mut rng) {
+            Ok(result) => panic!("expected error, got {:?}", result.text),
+            Err(err) => err,
+        };
+        match err {
+            RollError::ResultExpression {
+                table,
+                entry,
+                location,
+                ..
+            } => {
+                assert_eq!(table, "Parent");
+                assert_eq!(entry, 0);
+                assert_eq!(location, "text");
+            }
+            other => panic!("expected ResultExpression, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn roll_passes_clamped_modifier_lookup_as_value() {
+        // Modifier +100 clamps the lookup to the top entry (14); the binding
+        // must see the clamped value, the same number that selected the row.
+        let mut reg = Registry::new();
+        let results = (1..=14)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                bindings: vec![ResultBinding {
+                    name: "echo".into(),
+                    value: "value".into(),
+                }],
+                text: Some("V{= echo}".into()),
+                chain: None,
+            })
+            .collect();
+        reg.register(
+            "t.clamped".into(),
+            Table::Simple {
+                id: "clamped".into(),
+                name: "Clamped".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d8".into(),
+                modifier_range: Some(crate::models::ModifierRange { min: 0, max: 6 }),
+                results,
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(3);
+        let result = roll_with_rng_modifier(&reg, "t.clamped", Some(100), &mut rng).unwrap();
+        assert_eq!(result.roll, Some(14));
+        assert_eq!(result.text.as_deref(), Some("V14"));
+    }
+
+    #[test]
+    fn roll_passes_d66_digit_as_value() {
+        // A D66 digit lookup selects the row and seeds `value` with the same
+        // digit (22 here), not a re-rolled or decoded number.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.d66expr".into(),
+            Table::Simple {
+                id: "d66expr".into(),
+                name: "D66Expr".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "D66".into(),
+                modifier_range: None,
+                results: vec![
+                    ResultEntry {
+                        min: 11,
+                        max: 11,
+                        bindings: vec![ResultBinding {
+                            name: "echo".into(),
+                            value: "value".into(),
+                        }],
+                        text: Some("Eleven {= echo}".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 22,
+                        max: 22,
+                        bindings: vec![ResultBinding {
+                            name: "echo".into(),
+                            value: "value".into(),
+                        }],
+                        text: Some("Twentytwo {= echo}".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "t.d66expr", 22, &mut rng).unwrap();
+        assert_eq!(result.roll, Some(22));
+        assert_eq!(result.text.as_deref(), Some("Twentytwo 22"));
+    }
+
+    #[test]
+    fn roll_chains_use_fresh_scopes_with_same_binding_name() {
+        // Parent and child declare the same binding name; each selected row
+        // renders with its own lookup in its own scope.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.scopeparent".into(),
+            Table::Simple {
+                id: "scopeparent".into(),
+                name: "ScopeParent".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    bindings: vec![ResultBinding {
+                        name: "bonus".into(),
+                        value: "value + 100".into(),
+                    }],
+                    text: Some("P{= bonus}".into()),
+                    chain: Some(vec![ChainRef::Simple("scopechild".into())]),
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "t.scopechild".into(),
+            Table::Simple {
+                id: "scopechild".into(),
+                name: "ScopeChild".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    bindings: vec![ResultBinding {
+                        name: "bonus".into(),
+                        value: "value + 1".into(),
+                    }],
+                    text: Some("C{= bonus}".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let result = roll_with_rng_value(&reg, "t.scopeparent", 3, &mut rng).unwrap();
+        assert_eq!(result.text.as_deref(), Some("P103"));
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].text.as_deref(), Some("C2"));
     }
 }
