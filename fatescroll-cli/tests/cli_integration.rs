@@ -1600,3 +1600,213 @@ fn roll_quiet_conflicts_with_json() {
         "expected a clap conflict error, got: {stderr}"
     );
 }
+
+#[test]
+fn validate_result_expressions_fixture() {
+    let output = fatescroll_bin()
+        .args([
+            "validate",
+            "--collection",
+            &fixtures_path("result-expressions").to_string_lossy(),
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Collection is valid."), "got: {stdout}");
+}
+
+#[test]
+fn show_result_expressions_gems() {
+    let output = fatescroll_bin()
+        .args([
+            "show",
+            "--collection",
+            &fixtures_path("result-expressions").to_string_lossy(),
+            "expressions.gems",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Source template rendered verbatim, unevaluated.
+    assert!(
+        stdout.contains("Found {= count}"),
+        "expected source template in output, got: {stdout}"
+    );
+    // Declared binding sources in order.
+    let count_pos = stdout
+        .find("let count = roll(\"1d1\")")
+        .unwrap_or_else(|| panic!("no count binding in: {stdout}"));
+    let price_pos = stdout
+        .find("let price = count * 25")
+        .unwrap_or_else(|| panic!("no price binding in: {stdout}"));
+    assert!(count_pos < price_pos, "bindings out of order in: {stdout}");
+}
+
+#[test]
+fn roll_result_expressions_gems_value_1() {
+    // count is roll("1d1"), always 1, so the render is fully deterministic:
+    // singular "gem", price 1 * 25 = 25.
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("result-expressions").to_string_lossy(),
+            "expressions.gems",
+            "--value",
+            "1",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "Gems (rolled 1): Found 1 gem worth 25 gold.\n");
+}
+
+#[test]
+fn roll_result_expressions_gems_quiet() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("result-expressions").to_string_lossy(),
+            "expressions.gems",
+            "--value",
+            "1",
+            "--quiet",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, "Found 1 gem worth 25 gold.\n");
+}
+
+#[test]
+fn roll_result_expressions_gems_json() {
+    let output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &fixtures_path("result-expressions").to_string_lossy(),
+            "expressions.gems",
+            "--value",
+            "1",
+            "--json",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("stdout should be valid JSON");
+    let obj = value.as_object().expect("expected a JSON object");
+    let keys: std::collections::BTreeSet<&str> = obj.keys().map(String::as_str).collect();
+    assert_eq!(
+        keys,
+        ["children", "roll", "table_name", "text"]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<&str>>(),
+        "unexpected JSON keys: {value}"
+    );
+    assert_eq!(value["table_name"], "Gems");
+    assert_eq!(value["roll"], 1);
+    assert_eq!(value["text"], "Found 1 gem worth 25 gold.");
+    assert_eq!(value["children"], serde_json::json!([]));
+}
+
+#[test]
+fn validate_result_expressions_bad_syntax_fails() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("manifest.yaml"),
+        "name: Bad\nversion: \"1.0\"\nnamespace: bad\ndirectories:\n  - path: .\n    namespace: bad\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("bad.yaml"),
+        "id: bad\nname: Bad\ntype: simple\ntags: []\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: 'Broken {= count + } here.'\n",
+    )
+    .unwrap();
+
+    let output = fatescroll_bin()
+        .args(["validate", "--collection", &dir.path().to_string_lossy()])
+        .output()
+        .expect("failed to run fatescroll");
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.is_empty(), "expected empty stdout, got: {stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid result expression in table 'Bad' result 1 at text"),
+        "got: {stderr}"
+    );
+}
+
+#[test]
+fn roll_result_expressions_div_by_zero_fails_but_validate_passes() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("manifest.yaml"),
+        "name: Div0\nversion: \"1.0\"\nnamespace: div0\ndirectories:\n  - path: .\n    namespace: div0\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("div0.yaml"),
+        "id: div0\nname: Div0\ntype: simple\ntags: []\nroll: 1d6\nresults:\n  - min: 1\n    max: 6\n    text: 'Boom {= 1/0}.'\n",
+    )
+    .unwrap();
+
+    // Prepare-only validation passes: 1/0 parses and checks, failing only
+    // when evaluated on the roll path.
+    let validate_output = fatescroll_bin()
+        .args(["validate", "--collection", &dir.path().to_string_lossy()])
+        .output()
+        .expect("failed to run fatescroll");
+    assert!(
+        validate_output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&validate_output.stderr)
+    );
+
+    let roll_output = fatescroll_bin()
+        .args([
+            "roll",
+            "--collection",
+            &dir.path().to_string_lossy(),
+            "div0.div0",
+            "--value",
+            "1",
+        ])
+        .output()
+        .expect("failed to run fatescroll");
+    assert_eq!(roll_output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&roll_output.stdout);
+    assert!(stdout.is_empty(), "expected empty stdout, got: {stdout}");
+    let stderr = String::from_utf8_lossy(&roll_output.stderr);
+    assert!(
+        stderr.contains("result expression failed in table 'Div0' result 1 at text"),
+        "got: {stderr}"
+    );
+    assert!(stderr.contains("divides by zero"), "got: {stderr}");
+}

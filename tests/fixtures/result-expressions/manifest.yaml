@@ -1,0 +1,6 @@
+name: Result Expressions
+version: "1.0"
+namespace: expressions
+directories:
+  - path: .
+    namespace: expressions

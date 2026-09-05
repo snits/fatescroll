@@ -1,0 +1,14 @@
+id: gems
+name: Gems
+type: simple
+tags: []
+roll: 1d6
+results:
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        value: 'roll("1d1")'
+      - name: price
+        value: 'count * 25'
+    text: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.'
