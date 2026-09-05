@@ -13,7 +13,8 @@ import os from 'node:os';
 import path from 'node:path';
 import initWasm, * as rawWasm from '../src/wasm/pkg/fatescroll_wasm.js';
 import { wrapEngine, type Engine, type RawEngine } from '../src/engine/engine';
-import { ingest, isYamlPath, type CollectionEntry } from '../src/import/ingest';
+import { ingest } from '../src/import/ingest';
+import { readCollectionEntries, writeCollection } from './collection-io';
 import { mapDrafts, type LoadedState } from '../src/import/mapDrafts';
 import { collectionFiles, manifestYaml } from '../src/yaml/emit';
 import { uid } from '../src/model/ids';
@@ -35,27 +36,6 @@ const tmpDirs: string[] = [];
 afterAll(() => {
   for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
 });
-
-function readCollectionEntries(root: string): CollectionEntry[] {
-  const entries: CollectionEntry[] = [];
-  for (const p of fs.readdirSync(root, { recursive: true, encoding: 'utf8' })) {
-    const full = path.join(root, p);
-    const rel = p.split(path.sep).join('/');
-    if (fs.statSync(full).isFile() && isYamlPath(rel)) {
-      entries.push({ path: rel, contents: fs.readFileSync(full, 'utf8') });
-    }
-  }
-  return entries;
-}
-
-function writeCollection(dir: string, manifest: string, files: { path: string; contents: string }[]) {
-  fs.writeFileSync(path.join(dir, 'manifest.yaml'), manifest);
-  for (const f of files) {
-    const target = path.join(dir, f.path);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, f.contents);
-  }
-}
 
 /** The result-expressions fixture, imported through the real editor pipeline. */
 function importFixture(): LoadedState {
