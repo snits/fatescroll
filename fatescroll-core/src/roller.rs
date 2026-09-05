@@ -8,6 +8,20 @@ use crate::registry::Registry;
 const MAX_CHAIN_DEPTH: usize = 10;
 const MAX_REROLL_ATTEMPTS: usize = 100;
 
+fn result_expression_error(
+    table: &str,
+    entry: usize,
+    e: crate::result_text::ResultTextError,
+) -> RollError {
+    RollError::ResultExpression {
+        table: table.to_owned(),
+        entry,
+        location: e.location,
+        offset: e.offset,
+        reason: e.reason,
+    }
+}
+
 /// How the top-level lookup value for a table is determined.
 ///
 /// `Dice` rolls the table's expression (optionally shifting by a modifier);
@@ -235,22 +249,10 @@ fn roll_recursive(
             // The lookup that selected the row (clamped modifier result,
             // direct --value, D66 digit) seeds `value`; chains roll below
             // with their own fresh lookups and scopes.
-            let prepared =
-                crate::result_text::prepare(entry).map_err(|e| RollError::ResultExpression {
-                    table: name.clone(),
-                    entry: selected,
-                    location: e.location,
-                    offset: e.offset,
-                    reason: e.reason,
-                })?;
+            let prepared = crate::result_text::prepare(entry)
+                .map_err(|e| result_expression_error(name, selected, e))?;
             let text = crate::result_text::render(&prepared, i64::from(lookup_value), rng)
-                .map_err(|e| RollError::ResultExpression {
-                    table: name.clone(),
-                    entry: selected,
-                    location: e.location,
-                    offset: e.offset,
-                    reason: e.reason,
-                })?;
+                .map_err(|e| result_expression_error(name, selected, e))?;
 
             let mut children = Vec::new();
             if let Some(chains) = &entry.chain {

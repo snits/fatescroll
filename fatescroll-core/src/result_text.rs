@@ -43,7 +43,7 @@ pub(crate) struct PreparedResult {
 /// Maximum bindings checked for one result entry.
 pub(crate) const MAX_BINDINGS_PER_RESULT: usize = 128;
 /// Maximum template source bytes for an entry that uses bindings or strict
-/// markers. Rendered-output budgeting is Task 4's render boundary.
+/// markers. The rendered-output budget is `MAX_RENDERED_BYTES` below.
 pub(crate) const MAX_TEMPLATE_BYTES: usize = 65_536;
 /// Maximum rendered-output bytes for an entry that uses bindings or strict
 /// markers. Entries on the plain ordinary-dice path stay unbounded.
