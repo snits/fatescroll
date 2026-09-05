@@ -2,8 +2,11 @@
 // ABOUTME: Checks ordered bindings and scans strict markers without randomness.
 
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
-use crate::expression::{self, Expression, ValueType};
+use regex::Regex;
+
+use crate::expression::{self, Expression, Value, ValueScope, ValueType};
 use crate::models::ResultEntry;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,6 +44,9 @@ pub(crate) const MAX_BINDINGS_PER_RESULT: usize = 128;
 /// Maximum template source bytes for an entry that uses bindings or strict
 /// markers. Rendered-output budgeting is Task 4's render boundary.
 pub(crate) const MAX_TEMPLATE_BYTES: usize = 65_536;
+/// Maximum rendered-output bytes for an entry that uses bindings or strict
+/// markers. Entries on the plain ordinary-dice path stay unbounded.
+pub(crate) const MAX_RENDERED_BYTES: usize = 65_536;
 
 /// Names that bindings may not declare. `value` is the built-in lookup and
 /// the rest would collide with expression keywords or the dice function.
@@ -160,6 +166,117 @@ pub(crate) fn prepare(entry: &ResultEntry) -> Result<PreparedResult, ResultTextE
         }
     }
     Ok(PreparedResult { bindings, segments })
+}
+
+/// Render a prepared result against the selected lookup value.
+///
+/// NOTE: the task sketch for this boundary wrote `lookup: i32`; this uses
+/// `i64` because expression values are signed 64-bit and `value` inserts as
+/// an integer.
+///
+/// Every binding evaluates in list order into a fresh scope seeded with
+/// integer `value`, even when the template is absent or empty (dice draws
+/// and runtime errors still surface); absent/empty text then renders as
+/// `None`. Each source segment renders once left-to-right: literal spans
+/// go through the ordinary dice matcher, expression values splice verbatim
+/// with no re-matching.
+pub(crate) fn render(
+    prepared: &PreparedResult,
+    lookup: i64,
+    rng: &mut impl diceman::Rng,
+) -> Result<Option<String>, ResultTextError> {
+    let mut scope: ValueScope = BTreeMap::new();
+    scope.insert("value".to_string(), Value::Integer(lookup));
+    for (index, binding) in prepared.bindings.iter().enumerate() {
+        let value = expression::evaluate(&binding.expression, &scope, rng).map_err(|error| {
+            ResultTextError {
+                location: format!("let[{index}].{}", binding.name),
+                offset: error.offset,
+                reason: error.reason,
+            }
+        })?;
+        scope.insert(binding.name.clone(), value);
+    }
+    if prepared.segments.is_empty() {
+        return Ok(None);
+    }
+    // The output budget binds exactly the entries the source budget binds:
+    // those using bindings or strict markers. The plain ordinary-dice path
+    // stays unbounded.
+    let budgeted = !prepared.bindings.is_empty()
+        || prepared
+            .segments
+            .iter()
+            .any(|segment| matches!(segment, Segment::Expression { .. }));
+    let mut out = String::new();
+    for segment in &prepared.segments {
+        match segment {
+            Segment::Literal(span) => append_dice_span(&mut out, span, rng, budgeted)?,
+            Segment::Expression { expression, .. } => {
+                let value = expression::evaluate(expression, &scope, rng).map_err(|error| {
+                    ResultTextError {
+                        location: "text".to_string(),
+                        offset: error.offset,
+                        reason: error.reason,
+                    }
+                })?;
+                match value {
+                    Value::Integer(number) => {
+                        push_budgeted(&mut out, &number.to_string(), budgeted)?
+                    }
+                    Value::Boolean(flag) => push_budgeted(&mut out, &flag.to_string(), budgeted)?,
+                    Value::Text(text) => push_budgeted(&mut out, &text, budgeted)?,
+                }
+            }
+        }
+    }
+    Ok(Some(out))
+}
+
+/// Append one chunk to the rendered output, failing before the write when
+/// the chunk would carry a budgeted entry past the output limit. Unbudgeted
+/// entries append directly; output is never built-then-truncated.
+fn push_budgeted(out: &mut String, chunk: &str, budgeted: bool) -> Result<(), ResultTextError> {
+    if budgeted && out.len() + chunk.len() > MAX_RENDERED_BYTES {
+        return Err(ResultTextError {
+            location: "text".to_string(),
+            offset: MAX_RENDERED_BYTES,
+            reason: format!("rendered text exceeds size limit of {MAX_RENDERED_BYTES} bytes"),
+        });
+    }
+    out.push_str(chunk);
+    Ok(())
+}
+
+/// Ordinary `{dice}` matcher for literal template spans, moved from
+/// `roller.rs`: same regex and per-match replacement semantics (failed or
+/// nonnumeric dice stay literal), restructured from `replace_all` to an
+/// incremental walk so the output budget is checked before every append.
+/// Applied per literal span only; spliced expression values are never
+/// re-matched.
+static DICE_INTERPOLATION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{([^}]+)\}").unwrap());
+
+fn append_dice_span(
+    out: &mut String,
+    span: &str,
+    rng: &mut impl diceman::Rng,
+    budgeted: bool,
+) -> Result<(), ResultTextError> {
+    let mut cursor = 0;
+    for mat in DICE_INTERPOLATION.find_iter(span) {
+        push_budgeted(out, &span[cursor..mat.start()], budgeted)?;
+        // The match is `\{` + group + `\}`; both braces are one byte.
+        let expr = &span[mat.start() + 1..mat.end() - 1];
+        match diceman::roll_with_rng(expr, rng) {
+            Ok(result) => match result.outcome.as_numeric() {
+                Some(v) => push_budgeted(out, &v.to_string(), budgeted)?,
+                None => push_budgeted(out, mat.as_str(), budgeted)?,
+            },
+            Err(_) => push_budgeted(out, mat.as_str(), budgeted)?,
+        }
+        cursor = mat.end();
+    }
+    push_budgeted(out, &span[cursor..], budgeted)
 }
 
 /// A template span as found by the scanner, before type checking.
@@ -804,5 +921,288 @@ text: '{= label}'
         };
         let prepared = prepare(&entry).unwrap();
         assert_eq!(prepared.segments.len(), 1);
+    }
+
+    #[test]
+    fn render_prepared_gem_template() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: 'roll("1d1")'
+  - name: price
+    value: 'count * 25'
+text: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("Found 1 gem worth 25 gold.".to_string())
+        );
+    }
+
+    #[test]
+    fn render_absent_text_evaluates_bindings_then_returns_none() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: 'roll("1d1")'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let before = rng.checkpoint();
+        assert_eq!(render(&prepared, 6, &mut rng).unwrap(), None);
+        // The unused binding still drew from the caller's RNG.
+        assert_ne!(rng.checkpoint(), before);
+    }
+
+    #[test]
+    fn render_empty_text_evaluates_bindings_then_returns_none() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: 'roll("1d1")'
+text: ''
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let before = rng.checkpoint();
+        assert_eq!(render(&prepared, 6, &mut rng).unwrap(), None);
+        assert_ne!(rng.checkpoint(), before);
+    }
+
+    #[test]
+    fn render_surfaces_binding_errors_without_text() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: '1'
+  - name: price
+    value: 'count / 0'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let error = render(&prepared, 6, &mut rng).unwrap_err();
+        assert_eq!(error.location, "let[1].price");
+    }
+
+    #[test]
+    fn render_maps_template_runtime_errors_to_text() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+text: 'Found {= 1 / 0} gold.'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let error = render(&prepared, 6, &mut rng).unwrap_err();
+        assert_eq!(error.location, "text");
+    }
+
+    #[test]
+    fn render_seeds_value_with_lookup() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: doubled
+    value: 'value * 2'
+text: '{= doubled}'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("12".to_string())
+        );
+    }
+
+    #[test]
+    fn render_stringifies_booleans_and_integers() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+text: '{= value > 3} {= value}'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("true 6".to_string())
+        );
+    }
+
+    #[test]
+    fn render_splices_string_values_without_rescanning() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: label
+    value: '"{1d6}"'
+text: 'Found {= label} gold.'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let before = rng.checkpoint();
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("Found {1d6} gold.".to_string())
+        );
+        // No dice were rolled for the spliced string.
+        assert_eq!(rng.checkpoint(), before);
+    }
+
+    #[test]
+    fn render_applies_ordinary_dice_per_literal_span() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: 'roll("1d1")'
+text: 'Found {2d6} gold and {= count} gem.'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(42);
+        let mut manual = diceman::FastRng::with_seed(42);
+        // Bindings evaluate first: `roll("1d1")` draws once from the caller RNG.
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        let dice = diceman::roll_with_rng("2d6", &mut manual).unwrap();
+        let expected = format!(
+            "Found {} gold and 1 gem.",
+            dice.outcome.as_numeric().unwrap()
+        );
+        assert_eq!(render(&prepared, 6, &mut rng).unwrap(), Some(expected));
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn render_preserves_non_dice_braces_and_double_braces() {
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+text: 'Hello {world} and {{1d6}} end'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(42);
+        let rendered = render(&prepared, 6, &mut rng).unwrap().unwrap();
+        assert!(rendered.contains("{world}"), "got: {rendered}");
+        assert!(rendered.contains("{{1d6}}"), "got: {rendered}");
+    }
+
+    #[test]
+    fn render_budgets_repeated_values_near_boundary() {
+        let pad = "x".repeat(4000);
+        let entry = |repeats: usize| ResultEntry {
+            min: 1,
+            max: 6,
+            bindings: vec![ResultBinding {
+                name: "pad".to_string(),
+                value: format!("\"{pad}\""),
+            }],
+            text: Some("{= pad} ".repeat(repeats)),
+            chain: None,
+        };
+        // 16 repeats render 64,016 bytes and fit the 65,536 budget.
+        let prepared = prepare(&entry(16)).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let rendered = render(&prepared, 6, &mut rng).unwrap().unwrap();
+        assert_eq!(rendered.len(), 16 * 4001);
+        // 17 repeats render 68,017 bytes and must fail before appending past
+        // the budget, never build-then-truncate.
+        let prepared = prepare(&entry(17)).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let error = render(&prepared, 6, &mut rng).unwrap_err();
+        assert_eq!(error.location, "text");
+    }
+
+    #[test]
+    fn render_budgets_dice_expansion_past_boundary() {
+        // Near-full output (65,500 bytes) from a literal plus one value,
+        // then deterministic `{1d1}` expansions carry it past the budget.
+        let pad = "y".repeat(472);
+        let entry = |dice: usize| ResultEntry {
+            min: 1,
+            max: 6,
+            bindings: vec![ResultBinding {
+                name: "pad".to_string(),
+                value: format!("\"{pad}\""),
+            }],
+            text: Some(format!(
+                "{}{}{}",
+                "x".repeat(65_028),
+                "{= pad}",
+                "{1d1}".repeat(dice)
+            )),
+            chain: None,
+        };
+        // 65,028 + 472 renders 65,500 bytes and fits.
+        let prepared = prepare(&entry(0)).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let rendered = render(&prepared, 6, &mut rng).unwrap().unwrap();
+        assert_eq!(rendered.len(), 65_500);
+        // Sixty one-byte expansions would render 65,560 bytes and must fail
+        // at a dice append, never build-then-truncate.
+        let prepared = prepare(&entry(60)).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let error = render(&prepared, 6, &mut rng).unwrap_err();
+        assert_eq!(error.location, "text");
+    }
+
+    #[test]
+    fn render_leaves_plain_text_unbudgeted() {
+        // Entries without bindings or strict markers keep the existing
+        // unbounded ordinary-dice path.
+        let entry = ResultEntry {
+            min: 1,
+            max: 6,
+            bindings: vec![],
+            text: Some("x".repeat(70_000)),
+            chain: None,
+        };
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(11);
+        let rendered = render(&prepared, 6, &mut rng).unwrap().unwrap();
+        assert_eq!(rendered.len(), 70_000);
     }
 }
