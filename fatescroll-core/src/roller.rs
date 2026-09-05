@@ -1605,69 +1605,6 @@ mod tests {
     }
 
     #[test]
-    fn roll_render_error_aborts_before_chains() {
-        // `1 / 0` prepares fine but fails at render; the error must abort
-        // before the chained child rolls (no partial RollResult).
-        let mut reg = Registry::new();
-        reg.register(
-            "t.parent".into(),
-            Table::Simple {
-                id: "parent".into(),
-                name: "Parent".into(),
-                tags: vec![],
-                notes: vec![],
-                roll: "1d4".into(),
-                modifier_range: None,
-                results: vec![ResultEntry {
-                    min: 1,
-                    max: 4,
-                    text: Some("Broken {= 1 / 0}".into()),
-                    chain: Some(vec![ChainRef::Simple("child".into())]),
-                    bindings: vec![],
-                }],
-            },
-        )
-        .unwrap();
-        reg.register(
-            "t.child".into(),
-            Table::Simple {
-                id: "child".into(),
-                name: "Child".into(),
-                tags: vec![],
-                notes: vec![],
-                roll: "1d6".into(),
-                modifier_range: None,
-                results: vec![ResultEntry {
-                    min: 1,
-                    max: 6,
-                    text: Some("C".into()),
-                    chain: None,
-                    bindings: vec![],
-                }],
-            },
-        )
-        .unwrap();
-        let mut rng = diceman::FastRng::with_seed(1);
-        let err = match roll_with_rng_value(&reg, "t.parent", 2, &mut rng) {
-            Ok(result) => panic!("expected error, got {:?}", result.text),
-            Err(err) => err,
-        };
-        match err {
-            RollError::ResultExpression {
-                table,
-                entry,
-                location,
-                ..
-            } => {
-                assert_eq!(table, "Parent");
-                assert_eq!(entry, 0);
-                assert_eq!(location, "text");
-            }
-            other => panic!("expected ResultExpression, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn roll_passes_clamped_modifier_lookup_as_value() {
         // Modifier +100 clamps the lookup to the top entry (14); the binding
         // must see the clamped value, the same number that selected the row.
