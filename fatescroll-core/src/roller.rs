@@ -1801,4 +1801,517 @@ mod tests {
         assert_eq!(result.children.len(), 1);
         assert_eq!(result.children[0].text.as_deref(), Some("C2"));
     }
+
+    #[test]
+    fn reroll_rejected_row_never_evaluates_bindings() {
+        // The child row for value 1 would draw `roll("1d6")` and then fail on
+        // `1 / 0` if it were ever evaluated. Rolling with reroll [1] past a
+        // seed whose first child roll is 1 and second is not must succeed on
+        // the accepted row with exactly the two table-roll draws and no
+        // error surfacing from the rejected row.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.rrparent".into(),
+            Table::Simple {
+                id: "rrparent".into(),
+                name: "RrParent".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    text: Some("P".into()),
+                    chain: Some(vec![ChainRef::Modified {
+                        table: "rrchild".into(),
+                        reroll: vec![1],
+                    }]),
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "t.rrchild".into(),
+            Table::Simple {
+                id: "rrchild".into(),
+                name: "RrChild".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d4".into(),
+                modifier_range: None,
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        bindings: vec![ResultBinding {
+                            name: "sneaky".into(),
+                            value: "roll(\"1d6\")".into(),
+                        }],
+                        text: Some("{= 1 / 0}".into()),
+                        chain: None,
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 4,
+                        text: Some("Valid result".into()),
+                        chain: None,
+                        bindings: vec![],
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        // The parent is looked up directly, so the child table rolls are the
+        // first RNG consumptions: find a seed rejected once, then accepted.
+        let seed = (0..10_000u64)
+            .find(|seed| {
+                let mut rng = diceman::FastRng::with_seed(*seed);
+                let first = diceman::roll_with_rng("1d4", &mut rng)
+                    .unwrap()
+                    .outcome
+                    .as_numeric()
+                    .unwrap();
+                let second = diceman::roll_with_rng("1d4", &mut rng)
+                    .unwrap()
+                    .outcome
+                    .as_numeric()
+                    .unwrap();
+                first == 1 && second != 1
+            })
+            .expect("a seed with a rejected-then-accepted child roll exists");
+        let mut rng = diceman::FastRng::with_seed(seed);
+        let result = roll_with_rng_value(&reg, "t.rrparent", 1, &mut rng).unwrap();
+        assert_eq!(result.children.len(), 1);
+        assert_eq!(result.children[0].text.as_deref(), Some("Valid result"));
+        let mut manual = diceman::FastRng::with_seed(seed);
+        let _ = diceman::roll_with_rng("1d4", &mut manual).unwrap();
+        let _ = diceman::roll_with_rng("1d4", &mut manual).unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn roller_orders_table_roll_bindings_then_dice() {
+        // Full roll-surface ordering: the table roll draws first, then the
+        // binding's `roll("1d1")`, then the ordinary `{1d1}` dice in the
+        // literal span. The manual oracle replays that exact sequence.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.ordered".into(),
+            Table::Simple {
+                id: "ordered".into(),
+                name: "Ordered".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    bindings: vec![ResultBinding {
+                        name: "count".into(),
+                        value: "roll(\"1d1\")".into(),
+                    }],
+                    text: Some("Found {1d1} gold and {= count} gem.".into()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(42);
+        let result = roll_with_rng(&reg, "t.ordered", &mut rng).unwrap();
+        assert_eq!(result.text.as_deref(), Some("Found 1 gold and 1 gem."));
+        let mut manual = diceman::FastRng::with_seed(42);
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn roll_entry_with_bindings_and_no_text() {
+        // Absent text renders None, but the binding still evaluates and draws
+        // after the table roll.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.notextbind".into(),
+            Table::Simple {
+                id: "notextbind".into(),
+                name: "NoTextBind".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    bindings: vec![ResultBinding {
+                        name: "count".into(),
+                        value: "roll(\"1d1\")".into(),
+                    }],
+                    text: None,
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(9);
+        let result = roll_with_rng(&reg, "t.notextbind", &mut rng).unwrap();
+        assert_eq!(result.text, None);
+        let mut manual = diceman::FastRng::with_seed(9);
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn roll_entry_with_bindings_and_empty_text() {
+        // Present-but-empty text renders Some("") after the binding draws.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.emptybind".into(),
+            Table::Simple {
+                id: "emptybind".into(),
+                name: "EmptyBind".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    bindings: vec![ResultBinding {
+                        name: "count".into(),
+                        value: "roll(\"1d1\")".into(),
+                    }],
+                    text: Some(String::new()),
+                    chain: None,
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(9);
+        let result = roll_with_rng(&reg, "t.emptybind", &mut rng).unwrap();
+        assert_eq!(result.text, Some(String::new()));
+        let mut manual = diceman::FastRng::with_seed(9);
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn selected_row_runtime_error_precedes_child_rng_use() {
+        // Division by zero in the SELECTED row surfaces as
+        // RollError::ResultExpression, and the RNG proves the chained child
+        // never rolled: only the table roll was consumed.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.doomed".into(),
+            Table::Simple {
+                id: "doomed".into(),
+                name: "Doomed".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d4".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 4,
+                    text: Some("Broken {= 1 / 0}".into()),
+                    chain: Some(vec![ChainRef::Simple("doomedchild".into())]),
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        reg.register(
+            "t.doomedchild".into(),
+            Table::Simple {
+                id: "doomedchild".into(),
+                name: "DoomedChild".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 6,
+                    text: Some("C".into()),
+                    chain: None,
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(5);
+        let err = roll_with_rng(&reg, "t.doomed", &mut rng).unwrap_err();
+        match err {
+            RollError::ResultExpression {
+                table,
+                entry,
+                location,
+                ..
+            } => {
+                assert_eq!(table, "Doomed");
+                assert_eq!(entry, 0);
+                assert_eq!(location, "text");
+            }
+            other => panic!("expected ResultExpression, got {other:?}"),
+        }
+        let mut manual = diceman::FastRng::with_seed(5);
+        let _ = diceman::roll_with_rng("1d4", &mut manual).unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn sibling_chains_with_same_binding_name_evaluate_fresh() {
+        // Two chained siblings declare the same binding name `n`. Each visit
+        // evaluates its own binding (two draws); a shared cache would draw
+        // once and the checkpoint would diverge.
+        let mut reg = Registry::new();
+        reg.register(
+            "t.sibparent".into(),
+            Table::Simple {
+                id: "sibparent".into(),
+                name: "SibParent".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d1".into(),
+                modifier_range: None,
+                results: vec![ResultEntry {
+                    min: 1,
+                    max: 1,
+                    text: Some("P".into()),
+                    chain: Some(vec![
+                        ChainRef::Simple("siba".into()),
+                        ChainRef::Simple("sibb".into()),
+                    ]),
+                    bindings: vec![],
+                }],
+            },
+        )
+        .unwrap();
+        for (id, name, marker) in [("siba", "SibA", "A"), ("sibb", "SibB", "B")] {
+            reg.register(
+                format!("t.{id}"),
+                Table::Simple {
+                    id: id.into(),
+                    name: name.into(),
+                    tags: vec![],
+                    notes: vec![],
+                    roll: "1d1".into(),
+                    modifier_range: None,
+                    results: vec![ResultEntry {
+                        min: 1,
+                        max: 1,
+                        bindings: vec![ResultBinding {
+                            name: "n".into(),
+                            value: "roll(\"1d1\")".into(),
+                        }],
+                        text: Some(format!("{marker}{{= n}}")),
+                        chain: None,
+                    }],
+                },
+            )
+            .unwrap();
+        }
+        let mut rng = diceman::FastRng::with_seed(13);
+        let result = roll_with_rng_value(&reg, "t.sibparent", 1, &mut rng).unwrap();
+        assert_eq!(result.children.len(), 2);
+        assert_eq!(result.children[0].text.as_deref(), Some("A1"));
+        assert_eq!(result.children[1].text.as_deref(), Some("B1"));
+        let mut manual = diceman::FastRng::with_seed(13);
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        let _ = diceman::roll_with_rng("1d1", &mut manual).unwrap();
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn repeated_self_chain_visits_evaluate_fresh() {
+        // The self-chained row renders three times (parent plus two children
+        // that must not reselect row 1). Every visit evaluates its own
+        // `roll("1d1")` binding: five diceman consumptions in exact order.
+        let mut reg = Registry::new();
+        // Rows 2-4 share the shape but must not chain, so only row 1 carries
+        // the self-chain refs.
+        reg.register(
+            "t.selfish".into(),
+            Table::Simple {
+                id: "selfish".into(),
+                name: "Selfish".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d4".into(),
+                modifier_range: None,
+                results: vec![
+                    ResultEntry {
+                        min: 1,
+                        max: 1,
+                        bindings: vec![ResultBinding {
+                            name: "n".into(),
+                            value: "roll(\"1d1\")".into(),
+                        }],
+                        text: Some("M{= n}".into()),
+                        chain: Some(vec![
+                            ChainRef::Modified {
+                                table: "selfish".into(),
+                                reroll: vec![1],
+                            },
+                            ChainRef::Modified {
+                                table: "selfish".into(),
+                                reroll: vec![1],
+                            },
+                        ]),
+                    },
+                    ResultEntry {
+                        min: 2,
+                        max: 4,
+                        bindings: vec![ResultBinding {
+                            name: "n".into(),
+                            value: "roll(\"1d1\")".into(),
+                        }],
+                        text: Some("M{= n}".into()),
+                        chain: None,
+                    },
+                ],
+            },
+        )
+        .unwrap();
+        // The parent is looked up directly (no draw); the consumption sequence
+        // is parent binding, child table, child binding, child table, child
+        // binding. Find a seed where both child table rolls avoid row 1.
+        let seed = (0..10_000u64)
+            .find(|seed| {
+                let mut rng = diceman::FastRng::with_seed(*seed);
+                let _ =
+                    diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut rng)
+                        .unwrap();
+                let first = diceman::roll_with_rng("1d4", &mut rng)
+                    .unwrap()
+                    .outcome
+                    .as_numeric()
+                    .unwrap();
+                let _ =
+                    diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut rng)
+                        .unwrap();
+                let second = diceman::roll_with_rng("1d4", &mut rng)
+                    .unwrap()
+                    .outcome
+                    .as_numeric()
+                    .unwrap();
+                first != 1 && second != 1
+            })
+            .expect("a seed with two accepted self-chain visits exists");
+        let mut rng = diceman::FastRng::with_seed(seed);
+        let result = roll_with_rng_value(&reg, "t.selfish", 1, &mut rng).unwrap();
+        assert_eq!(result.text.as_deref(), Some("M1"));
+        assert_eq!(result.children.len(), 2);
+        assert_eq!(result.children[0].text.as_deref(), Some("M1"));
+        assert_eq!(result.children[1].text.as_deref(), Some("M1"));
+        let mut manual = diceman::FastRng::with_seed(seed);
+        for _ in 0..2 {
+            let _ =
+                diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+                    .unwrap();
+            let _ = diceman::roll_with_rng("1d4", &mut manual).unwrap();
+        }
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn value_negative_modified_lookup_arrives_as_value() {
+        // A clamped negative modified lookup seeds integer `value`: the
+        // rendered number always equals the selected lookup.
+        let mut reg = Registry::new();
+        let results = (-5..=6)
+            .map(|v| ResultEntry {
+                min: v,
+                max: v,
+                text: Some("Outcome {= value}".into()),
+                chain: None,
+                bindings: vec![],
+            })
+            .collect();
+        reg.register(
+            "t.aging".into(),
+            Table::Simple {
+                id: "aging".into(),
+                name: "Aging".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "1d6".into(),
+                modifier_range: Some(crate::models::ModifierRange { min: -6, max: 0 }),
+                results,
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(21);
+        let result = roll_with_rng_modifier(&reg, "t.aging", Some(-6), &mut rng).unwrap();
+        let lookup = result.roll.unwrap();
+        assert!(lookup <= 0, "modifier -6 must push the lookup non-positive");
+        assert_eq!(
+            result.text.as_deref(),
+            Some(format!("Outcome {lookup}")).as_deref()
+        );
+    }
+
+    #[test]
+    fn d66_dice_roll_arrives_as_integer_value() {
+        // A real D66 dice roll (not a direct lookup) selects the row and
+        // seeds integer `value` with the same digit.
+        let mut reg = Registry::new();
+        let results = crate::dice::digit_dice_values(6, 2)
+            .into_iter()
+            .map(|v| ResultEntry {
+                min: v as i32,
+                max: v as i32,
+                bindings: vec![ResultBinding {
+                    name: "echo".into(),
+                    value: "value".into(),
+                }],
+                text: Some("{= echo}".into()),
+                chain: None,
+            })
+            .collect();
+        reg.register(
+            "t.d66live".into(),
+            Table::Simple {
+                id: "d66live".into(),
+                name: "D66Live".into(),
+                tags: vec![],
+                notes: vec![],
+                roll: "D66".into(),
+                modifier_range: None,
+                results,
+            },
+        )
+        .unwrap();
+        let mut rng = diceman::FastRng::with_seed(4);
+        let result = roll_with_rng(&reg, "t.d66live", &mut rng).unwrap();
+        let lookup = result.roll.unwrap();
+        assert_eq!(result.text.as_deref(), Some(lookup.to_string()).as_deref());
+    }
+
+    #[test]
+    fn direct_value_lookup_leaves_rng_untouched() {
+        // Direct lookup skips the table dice entirely; with pure bindings the
+        // whole roll is RNG-silent.
+        let reg = expression_registry();
+        let mut rng = diceman::FastRng::with_seed(1);
+        let before = rng.checkpoint();
+        let result = roll_with_rng_value(&reg, "t.expr", 2, &mut rng).unwrap();
+        assert_eq!(result.roll, Some(2));
+        assert_eq!(result.text.as_deref(), Some("Low"));
+        assert_eq!(rng.checkpoint(), before);
+    }
 }

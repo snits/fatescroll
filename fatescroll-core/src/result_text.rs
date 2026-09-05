@@ -1213,4 +1213,88 @@ text: 'Hello {world} and {{1d6}} end'
         let rendered = render(&prepared, 6, &mut rng).unwrap().unwrap();
         assert_eq!(rendered.len(), 70_000);
     }
+
+    #[test]
+    fn render_binding_used_twice_draws_once() {
+        // `count` evaluates once into the scope; two template uses must not
+        // draw again. One explicit diceman 1d1 draw is the oracle for both
+        // the value and the consumed RNG state.
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: count
+    value: 'roll("1d1")'
+text: '{= count} and {= count}'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(7);
+        let mut manual = diceman::FastRng::with_seed(7);
+        let drawn =
+            diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+                .unwrap()
+                .outcome
+                .as_numeric()
+                .unwrap();
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some(format!("{drawn} and {drawn}"))
+        );
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn render_unused_binding_draws_exactly_once() {
+        // `stashed` never appears in the template but still evaluates and
+        // draws exactly once from the caller's RNG; rendering still succeeds.
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: stashed
+    value: 'roll("1d1")'
+text: 'plain'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(7);
+        let mut manual = diceman::FastRng::with_seed(7);
+        let _ = diceman::roller::evaluate_with_rng(&diceman::parse("1d1").unwrap(), &mut manual)
+            .unwrap();
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("plain".to_string())
+        );
+        assert_eq!(rng.checkpoint(), manual.checkpoint());
+    }
+
+    #[test]
+    fn render_lazy_binding_branch_draws_nothing() {
+        // Binding-level laziness: the unselected `roll("1d1")` branch never
+        // draws, so the whole render leaves the RNG untouched.
+        let entry: ResultEntry = serde_yaml::from_str(
+            r#"
+min: 1
+max: 6
+let:
+  - name: x
+    value: 'if false then roll("1d1") else 42'
+text: '{= x}'
+"#,
+        )
+        .unwrap();
+        let prepared = prepare(&entry).unwrap();
+        let mut rng = diceman::FastRng::with_seed(7);
+        let before = rng.checkpoint();
+        assert_eq!(
+            render(&prepared, 6, &mut rng).unwrap(),
+            Some("42".to_string())
+        );
+        assert_eq!(rng.checkpoint(), before);
+    }
 }
