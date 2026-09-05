@@ -37,6 +37,7 @@ pub(crate) enum Segment {
 pub(crate) struct PreparedResult {
     pub(crate) bindings: Vec<CheckedBinding>,
     pub(crate) segments: Vec<Segment>,
+    pub(crate) has_text: bool,
 }
 
 /// Maximum bindings checked for one result entry.
@@ -165,7 +166,11 @@ pub(crate) fn prepare(entry: &ResultEntry) -> Result<PreparedResult, ResultTextE
             }
         }
     }
-    Ok(PreparedResult { bindings, segments })
+    Ok(PreparedResult {
+        bindings,
+        segments,
+        has_text: entry.text.is_some(),
+    })
 }
 
 /// Render a prepared result against the selected lookup value.
@@ -176,8 +181,8 @@ pub(crate) fn prepare(entry: &ResultEntry) -> Result<PreparedResult, ResultTextE
 ///
 /// Every binding evaluates in list order into a fresh scope seeded with
 /// integer `value`, even when the template is absent or empty (dice draws
-/// and runtime errors still surface); absent/empty text then renders as
-/// `None`. Each source segment renders once left-to-right: literal spans
+/// and runtime errors still surface); absent text then renders as `None`
+/// while present-but-empty text renders as `Some("")`. Each source segment renders once left-to-right: literal spans
 /// go through the ordinary dice matcher, expression values splice verbatim
 /// with no re-matching.
 pub(crate) fn render(
@@ -198,6 +203,9 @@ pub(crate) fn render(
         scope.insert(binding.name.clone(), value);
     }
     if prepared.segments.is_empty() {
+        if prepared.has_text {
+            return Ok(Some(String::new()));
+        }
         return Ok(None);
     }
     // The output budget binds exactly the entries the source budget binds:
@@ -967,7 +975,7 @@ let:
     }
 
     #[test]
-    fn render_empty_text_evaluates_bindings_then_returns_none() {
+    fn render_empty_text_evaluates_bindings_then_returns_some_empty() {
         let entry: ResultEntry = serde_yaml::from_str(
             r#"
 min: 1
@@ -982,7 +990,7 @@ text: ''
         let prepared = prepare(&entry).unwrap();
         let mut rng = diceman::FastRng::with_seed(11);
         let before = rng.checkpoint();
-        assert_eq!(render(&prepared, 6, &mut rng).unwrap(), None);
+        assert_eq!(render(&prepared, 6, &mut rng).unwrap(), Some(String::new()));
         assert_ne!(rng.checkpoint(), before);
     }
 
