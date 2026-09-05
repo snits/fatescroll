@@ -7,8 +7,10 @@ A structured randomness engine for creative and evaluative work.
 fatescroll loads collections of random tables defined in YAML, validates them,
 and rolls on them from the command line. Tables support chaining (a result
 triggers rolls on other tables), compound tables (roll multiple tables at once),
-and inline dice interpolation in result text (e.g., `{2d6x10}` evaluates to a
-rolled value).
+inline dice interpolation in result text (e.g., `{2d6x10}` evaluates to a
+rolled value), and computed result values: an ordered `let` list of named
+integer/boolean/string expressions with conditional `{= ...}` wording
+(e.g., `Found {= count} {= if count == 1 then "gem" else "gems"}`).
 
 ## Installation
 
@@ -151,7 +153,8 @@ Collection is valid after import.
 ## Documentation
 
 See [docs/authoring-guide.md](docs/authoring-guide.md) for details on writing
-tables, chaining, compound tables, and dice expressions.
+tables, chaining, compound tables, dice expressions, and computed result
+values with strict `{= ...}` expressions.
 
 ## See Also
 

@@ -407,6 +407,105 @@ Wilderness Encounter (rolled 8): Merchant with 80 gold
   Merchant Goods (rolled 2): Exotic spices and silks
 ```
 
+## Result Values and Strict Expressions
+
+Ordinary `{dice}` text is tolerant: a failed expression stays literal. Strict
+`{= ...}` expressions are the opposite: any error fails validation (or aborts
+the roll), with a message naming the table, result, binding or text location,
+and byte offset. Previously literal `{= ...}` and `{{=` sequences acquire
+meaning — do not assume old text containing them renders byte-identically.
+
+A result can declare an ordered `let` list of named values. Each binding may
+refer to `value` and to earlier bindings only; the template sees all bindings.
+Values are local to one selected result — chains and repeat visits get fresh
+scopes, and two results can use the same binding names independently.
+
+```yaml
+  - min: 1
+    max: 6
+    let:
+      - name: count
+        value: 'roll("1d1")'
+      - name: price
+        value: 'count * 25'
+    text: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.'
+```
+
+Rolling a 1 renders `Found 1 gem worth 25 gold.`
+
+`value` is the number that selected this result (the clamped lookup, the
+`--value` argument, or the digit value for D66) — not another dice roll.
+Binding names must be unique within the list and cannot shadow `value`,
+`roll`, `if`, `then`, `else`, `true`, or `false`.
+
+### Grammar and types
+
+Values are 64-bit integers, booleans, or strings. There is no float,
+truthiness, coercion, or string concatenation; equality needs matching types,
+ordering needs integers, and boolean operators need booleans.
+
+```
+conditional = "if", expression, "then", expression, "else", expression | disjunction
+disjunction = conjunction, { "||", conjunction }
+conjunction = equality, { "&&", equality }
+equality    = comparison, [ ("==" | "!="), comparison ]
+comparison  = sum, [ ("<" | "<=" | ">" | ">="), sum ]
+sum         = product, { ("+" | "-"), product }
+product     = unary, { ("*" | "/" | "%"), unary }
+unary       = ("-" | "!"), unary | primary
+primary     = integer | boolean | string | identifier
+            | "(", expression, ")" | "roll", "(", string, ")"
+```
+
+Conditions are lazy: `if` evaluates only its chosen branch, and `&&`/`||`
+short-circuit, so `if false then 1 / 0 else 1` is valid and yields 1. Both
+branches are still parsed and type-checked. Arithmetic is checked — overflow
+and zero divisors are errors, division truncates toward zero — and integer
+literals max out at `9223372036854775807` (write the minimum as
+`-9223372036854775807 - 1`). Strings are double-quoted UTF-8 with `\"`, `\\`,
+`\n`, `\r`, and `\t` escapes.
+
+### Dice in expressions
+
+`roll()` takes one `[N]dS` literal only: count 1–1000, sides 1–1000000, no
+internal whitespace, no arithmetic or modifiers inside the string. It is
+allowed in binding values (including conditional branches) but never inside
+`{= ...}` — give a random value a name, then interpolate the name. Dice
+literals are range-checked up front even in unselected branches, so
+`if false then roll("0d6") else 1` fails validation:
+
+```
+invalid dice literal `0d6`: count must be 1-1000
+```
+
+Put arithmetic outside the call: write `roll("2d6") * 10`, not
+`roll("2d6x10")`.
+
+### Markers and escapes
+
+`{= expression}` interpolates an integer in decimal, a boolean as
+`true`/`false`, or a string as its contents. The closing brace is found
+outside string literals, so braces inside quoted strings are ordinary
+characters. Missing closing braces and empty expressions are errors.
+`{{=` emits a literal `{=` and is never evaluated. Generated output is never
+rescanned: a binding holding the string `"{1d6}"` emits those characters
+without rolling.
+
+### Limits
+
+An expression is limited to 4,096 bytes, tree depth 64, and 128 bindings per
+result. Entries using bindings or strict markers cap source and rendered text
+at 65,536 bytes each.
+
+### Table Forge
+
+Each result card has a VALUES section: ordered Name/Expression rows with add,
+remove, and move-up/move-down controls, plus a `{= ...}` hint on the text
+field. Reordering can break dependencies (a forward reference) — the
+validation pane reports the engine's diagnostic, and fixing the order clears
+it. Invalid expressions stay editable and round-trip through import and
+export; structurally malformed binding YAML fails parsing instead.
+
 ## Validation Rules
 
 Running `fatescroll validate` checks your collection for errors. Validation happens in two phases: per-table checks (run as each file is loaded) and cross-reference checks (run after all tables are loaded).

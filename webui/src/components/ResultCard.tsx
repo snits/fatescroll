@@ -1,11 +1,12 @@
 // ABOUTME: One result row on a simple table: its range, probability pill, text,
 // ABOUTME: and chain-to-table entries.
 
+import { BindingRow } from './BindingRow';
 import { ChainRow } from './ChainRow';
 import { cx, isNumericDraft } from './Field';
 import { formatPct, rangeProbability } from '../logic/probability';
 import { uid } from '../model/ids';
-import type { ChainDraft, ResultDraft } from '../model/types';
+import type { BindingDraft, ChainDraft, ResultDraft } from '../model/types';
 
 export function ResultCard({
   result,
@@ -36,6 +37,27 @@ export function ResultCard({
 
   function addChain() {
     onPatch({ chain: [...result.chain, { rid: uid(), struct: false, ref: '', reroll: [] }] });
+  }
+
+  function patchBinding(brid: string, patch: Partial<Omit<BindingDraft, 'rid'>>) {
+    onPatch({ bindings: result.bindings.map((b) => (b.rid === brid ? { ...b, ...patch } : b)) });
+  }
+
+  function removeBinding(brid: string) {
+    onPatch({ bindings: result.bindings.filter((b) => b.rid !== brid) });
+  }
+
+  function moveBinding(brid: string, delta: -1 | 1) {
+    const from = result.bindings.findIndex((b) => b.rid === brid);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= result.bindings.length) return;
+    const next = [...result.bindings];
+    [next[from], next[to]] = [next[to], next[from]];
+    onPatch({ bindings: next });
+  }
+
+  function addBinding() {
+    onPatch({ bindings: [...result.bindings, { rid: uid(), name: '', value: '' }] });
   }
 
   return (
@@ -76,10 +98,32 @@ export function ResultCard({
       </div>
       <input
         className={cx('field-input', 'result-card-text')}
-        placeholder="Result text — supports {2d6x10} dice interpolation"
+        placeholder="Result text — supports {2d6x10} dice and {= ...} value expressions"
         value={result.text}
         onChange={(e) => onPatch({ text: e.target.value })}
       />
+      <div className="result-card-values">
+        <div className="result-card-values-header">
+          <span className="result-card-values-title">VALUES</span>
+          <span className="result-card-values-hint">ordered named expressions, e.g. count then count * 25</span>
+        </div>
+        {result.bindings.map((binding, i) => (
+          <BindingRow
+            key={binding.rid}
+            binding={binding}
+            index={i}
+            isFirst={i === 0}
+            isLast={i === result.bindings.length - 1}
+            onPatch={(patch) => patchBinding(binding.rid, patch)}
+            onRemove={() => removeBinding(binding.rid)}
+            onMoveUp={() => moveBinding(binding.rid, -1)}
+            onMoveDown={() => moveBinding(binding.rid, 1)}
+          />
+        ))}
+        <button type="button" className="result-card-add-value" onClick={addBinding}>
+          + value
+        </button>
+      </div>
       <div className="result-card-chain">
         {result.chain.map((chain) => (
           <ChainRow

@@ -3,7 +3,7 @@
 // ABOUTME: compound body, delete confirmation, and App center-pane wiring.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { AppContent } from '../../src/App';
@@ -12,6 +12,7 @@ import { EngineProvider } from '../../src/engine/useEngine';
 import type { Engine } from '../../src/engine/engine';
 import { initialState, useForgeStore } from '../../src/model/store';
 import type { Dir, TableDraft } from '../../src/model/types';
+import { tableYaml } from '../../src/yaml/emit';
 
 afterEach(cleanup);
 
@@ -553,6 +554,194 @@ describe('TableEditor results', () => {
     const remaining = useForgeStore.getState().tables[0].results;
     expect(remaining).toHaveLength(1);
     expect(remaining[0].rid).toBe('r2');
+  });
+});
+
+describe('ResultCard values', () => {
+  it('authors two ordered bindings through the rendered editor and store', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [{ rid: 'r1', min: '1', max: '6', text: '', chain: [], bindings: [] }],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+
+    await user.click(screen.getByRole('button', { name: '+ value' }));
+    await user.type(screen.getByLabelText('Value 1 name'), 'count');
+    await user.type(screen.getByLabelText('Value 1 expression'), 'roll("1d1")');
+    await user.click(screen.getByRole('button', { name: '+ value' }));
+    await user.type(screen.getByLabelText('Value 2 name'), 'price');
+    await user.type(screen.getByLabelText('Value 2 expression'), 'count * 25');
+
+    // Braces are key-descriptor syntax for userEvent.type; a change event
+    // exercises the same commit path for template text containing markers.
+    fireEvent.change(screen.getByPlaceholderText(/Result text/), {
+      target: {
+        value: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.',
+      },
+    });
+
+    const yaml = tableYaml(useForgeStore.getState().tables[0]);
+    const letIndex = yaml.indexOf('let:');
+    const countIndex = yaml.indexOf('name: count');
+    const priceIndex = yaml.indexOf('name: price');
+    expect(letIndex).toBeGreaterThan(-1);
+    expect(countIndex).toBeGreaterThan(letIndex);
+    expect(priceIndex).toBeGreaterThan(countIndex);
+    expect(yaml).toContain('value: roll("1d1")');
+    expect(yaml).toContain('value: count * 25');
+    expect(yaml).toContain('Found {= count}');
+  });
+
+  it('move down swaps the binding order in the store', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [
+            {
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: '',
+              chain: [],
+              bindings: [
+                { rid: 'b1', name: 'count', value: 'roll("1d1")' },
+                { rid: 'b2', name: 'price', value: 'count * 25' },
+              ],
+            },
+          ],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+
+    await user.click(screen.getByRole('button', { name: 'Move Value 1 down' }));
+
+    expect(useForgeStore.getState().tables[0].results[0].bindings.map((b) => b.name)).toEqual([
+      'price',
+      'count',
+    ]);
+    // Row identities follow position, not editor ids.
+    expect((screen.getByLabelText('Value 1 name') as HTMLInputElement).value).toBe('price');
+  });
+
+  it('disables move-up on the first row and move-down on the last row', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [
+            {
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: '',
+              chain: [],
+              bindings: [
+                { rid: 'b1', name: 'count', value: 'roll("1d1")' },
+                { rid: 'b2', name: 'price', value: 'count * 25' },
+              ],
+            },
+          ],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+
+    expect((screen.getByRole('button', { name: 'Move Value 1 up' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByRole('button', { name: 'Move Value 2 down' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByRole('button', { name: 'Move Value 1 down' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect((screen.getByRole('button', { name: 'Move Value 2 up' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+
+    // A disabled control performs no reorder.
+    await user.click(screen.getByRole('button', { name: 'Move Value 1 up' }));
+    expect(useForgeStore.getState().tables[0].results[0].bindings.map((b) => b.name)).toEqual([
+      'count',
+      'price',
+    ]);
+  });
+
+  it('remove deletes the row and keeps the remaining bindings in order', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [
+            {
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: '',
+              chain: [],
+              bindings: [
+                { rid: 'b1', name: 'count', value: 'roll("1d1")' },
+                { rid: 'b2', name: 'price', value: 'count * 25' },
+              ],
+            },
+          ],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+
+    await user.click(screen.getByRole('button', { name: 'Remove Value 1' }));
+
+    const bindings = useForgeStore.getState().tables[0].results[0].bindings;
+    expect(bindings.map((b) => b.name)).toEqual(['price']);
+    expect(bindings[0].rid).toBe('b2');
+  });
+
+  it('editing a binding clears a stale roll preview through the store flow', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [
+            {
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: '',
+              chain: [],
+              bindings: [{ rid: 'b1', name: 'count', value: 'roll("1d1")' }],
+            },
+          ],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+      rollLines: [{ indent: 0, text: 'stale preview', error: false }],
+    });
+    renderEditor(makeEngine());
+
+    await user.type(screen.getByLabelText('Value 1 expression'), ' + 0');
+
+    expect(useForgeStore.getState().rollLines).toBeNull();
   });
 });
 

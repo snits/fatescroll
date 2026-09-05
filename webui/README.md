@@ -1,7 +1,8 @@
 # Table Forge
 
 Browser editor for authoring fatescroll YAML collections — build tables, chains,
-and compound tables in a form UI, preview the emitted YAML, validate and roll
+and compound tables in a form UI, author ordered result values with
+`{= ...}` expressions, preview the emitted YAML, validate and roll
 against the real fatescroll engine, and export a zip ready to drop into a
 collection directory.
 
