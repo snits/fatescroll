@@ -105,13 +105,12 @@ function coerceDocument(persisted: unknown): PersistedDoc | null {
 
 // Migrates a version-1 persisted document to the version-2 shape by adding
 // `bindings: []` to every result while preserving all other data and editor
-// ids. Nested table/result container shapes are checked before traversal;
-// malformed version-1 data returns undefined and follows the existing discard
-// path without throwing.
+// ids. Only the tables/results nesting is checked here: manifest/dirs shape
+// is left to coerceDocument, which discards malformed blobs after migration.
+// Malformed table/result container shapes return undefined and follow the
+// existing discard path without throwing.
 function migrateV1ToV2(persisted: unknown): Record<string, unknown> | undefined {
   if (!isObject(persisted)) return undefined;
-  if (!isObject(persisted.manifest)) return undefined;
-  if (!Array.isArray(persisted.dirs) || !persisted.dirs.every(isObject)) return undefined;
   if (!Array.isArray(persisted.tables) || !persisted.tables.every(isObject)) return undefined;
   const tables: Record<string, unknown>[] = [];
   for (const table of persisted.tables as Record<string, unknown>[]) {

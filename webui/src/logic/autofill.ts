@@ -11,17 +11,13 @@ export function autofillRanges(
 ): ResultDraft[] {
   if (values.length === 0) return results;
   if (kind === 'digit') {
-    // one row per outcome; preserve existing text/chain by index
+    // one row per outcome; preserve the existing row by index, retargeting
+    // only its range (spread, like the contiguous path, so new row fields
+    // survive without listing each one).
     return values.map((v, i) => {
       const prev = results[i];
-      return {
-        rid: prev?.rid ?? uid(),
-        min: String(v),
-        max: String(v),
-        text: prev?.text ?? '',
-        chain: prev?.chain ?? [],
-        bindings: prev?.bindings ?? [],
-      };
+      if (!prev) return { rid: uid(), min: String(v), max: String(v), text: '', chain: [], bindings: [] };
+      return { ...prev, min: String(v), max: String(v) };
     });
   }
   // Contiguous path: at most one row per value; surplus rows are dropped
