@@ -444,7 +444,9 @@ text: '{= if false then roll("1d6") else 1}'
 "#,
         )
         .unwrap();
-        assert!(prepare(&entry).is_err());
+        let error = prepare(&entry).unwrap_err();
+        assert!(error.reason.contains("dice"), "got: {}", error.reason);
+        assert_eq!(error.location, "text");
     }
 
     #[test]
@@ -724,7 +726,8 @@ text: '{= label}'
             text: None,
             chain: None,
         };
-        assert!(prepare(&entry).is_err());
+        let error = prepare(&entry).unwrap_err();
+        assert!(error.reason.contains("size limit"), "got: {}", error.reason);
     }
 
     #[test]
@@ -737,7 +740,8 @@ text: '{= label}'
             text: Some(format!("{{= {big}}}")),
             chain: None,
         };
-        assert!(prepare(&entry).is_err());
+        let error = prepare(&entry).unwrap_err();
+        assert!(error.reason.contains("size limit"), "got: {}", error.reason);
     }
 
     #[test]
@@ -753,7 +757,12 @@ text: '{= label}'
             text: None,
             chain: None,
         };
-        assert!(prepare(&entry).is_err());
+        let error = prepare(&entry).unwrap_err();
+        assert!(
+            error.reason.contains("depth limit"),
+            "got: {}",
+            error.reason
+        );
     }
 
     #[test]
