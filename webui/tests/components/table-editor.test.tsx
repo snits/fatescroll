@@ -635,6 +635,41 @@ describe('ResultCard values', () => {
     expect((screen.getByLabelText('Value 1 name') as HTMLInputElement).value).toBe('price');
   });
 
+  it('move up swaps the binding order in the store', async () => {
+    const user = userEvent.setup();
+    useForgeStore.setState({
+      dirs: [makeDir()],
+      tables: [
+        makeTable({
+          results: [
+            {
+              rid: 'r1',
+              min: '1',
+              max: '6',
+              text: '',
+              chain: [],
+              bindings: [
+                { rid: 'b1', name: 'count', value: 'roll("1d1")' },
+                { rid: 'b2', name: 'price', value: 'count * 25' },
+              ],
+            },
+          ],
+        }),
+      ],
+      selUid: 'table-1',
+      view: 'table',
+    });
+    renderEditor(makeEngine());
+
+    await user.click(screen.getByRole('button', { name: 'Move Value 2 up' }));
+
+    expect(useForgeStore.getState().tables[0].results[0].bindings.map((b) => b.name)).toEqual([
+      'price',
+      'count',
+    ]);
+    expect((screen.getByLabelText('Value 1 name') as HTMLInputElement).value).toBe('price');
+  });
+
   it('disables move-up on the first row and move-down on the last row', async () => {
     const user = userEvent.setup();
     useForgeStore.setState({

@@ -431,7 +431,8 @@ scopes, and two results can use the same binding names independently.
     text: 'Found {= count} {= if count == 1 then "gem" else "gems"} worth {= price} gold.'
 ```
 
-Rolling a 1 renders `Found 1 gem worth 25 gold.`
+Rolling a 1 renders `Found 1 gem worth 25 gold.` This is the `expressions.gems`
+acceptance collection (`tests/fixtures/result-expressions`).
 
 `value` is the number that selected this result (the clamped lookup, the
 `--value` argument, or the digit value for D66) — not another dice roll.
@@ -504,7 +505,10 @@ remove, and move-up/move-down controls, plus a `{= ...}` hint on the text
 field. Reordering can break dependencies (a forward reference) — the
 validation pane reports the engine's diagnostic, and fixing the order clears
 it. Invalid expressions stay editable and round-trip through import and
-export; structurally malformed binding YAML fails parsing instead.
+export; structurally malformed binding YAML fails parsing instead. Saved
+Table Forge drafts migrate from version 1 to 2 by gaining an empty bindings
+list on each result, preserving all other data and editor ids; a malformed
+saved draft, or one from an unknown version, is discarded rather than loaded.
 
 ## Validation Rules
 

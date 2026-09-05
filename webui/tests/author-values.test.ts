@@ -102,6 +102,32 @@ describe('author-values diagnostics', () => {
     expect(errors.length).toBeGreaterThan(0);
     expect(errors.some((e) => e.includes('unknown name `count`'))).toBe(true);
   }, 60_000);
+
+  test('an invalid expression stays editable and round-trips through export/reopen', () => {
+    const state = importFixture();
+
+    // An author mid-edit: syntactically broken but structurally valid YAML.
+    state.tables[0].results[0].bindings[1].value = 'count +';
+
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fatescroll-author-invalid-'));
+    tmpDirs.push(tmp);
+    writeCollection(tmp, manifestYaml(state.manifest, state.dirs), collectionFiles(state.dirs, state.tables));
+
+    // Reopening parses (not a malformed document) and preserves the source.
+    const reopenedRaw = ingest(readCollectionEntries(tmp));
+    const reopened = engine.parseCollection(reopenedRaw.manifestYaml, reopenedRaw.files);
+    if (!reopened.ok) throw new Error(`reopen failed: ${reopened.errors.join('; ')}`);
+    const redrafts = mapDrafts(reopened.collection);
+    expect(redrafts.tables[0].results[0].bindings.map((b) => `${b.name}=${b.value}`)).toEqual([
+      'count=roll("1d1")',
+      'price=count +',
+    ]);
+
+    // Validation flags it as an expression error, exactly as the pane shows.
+    const errors = validateDrafts(redrafts);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('let[1].price');
+  }, 60_000);
 });
 
 describe('author-values end-to-end acceptance', () => {

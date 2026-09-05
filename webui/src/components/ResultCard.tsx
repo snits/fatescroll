@@ -98,7 +98,7 @@ export function ResultCard({
       </div>
       <input
         className={cx('field-input', 'result-card-text')}
-        placeholder="Result text — supports {2d6x10} dice and {= ...} value expressions"
+        placeholder="Result text — supports {2d6x10} dice and {= count} value expressions"
         value={result.text}
         onChange={(e) => onPatch({ text: e.target.value })}
       />
