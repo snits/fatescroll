@@ -5,8 +5,8 @@ use crate::error::{Error, ValidationError};
 use crate::models::{ModifierRange, ResultEntry, Table};
 use crate::registry::Registry;
 use regex::Regex;
-use std::collections::HashSet;
-use std::sync::LazyLock;
+use std::collections::{HashMap, HashSet};
+use std::sync::{LazyLock, Mutex};
 
 static NAMESPACE_SEGMENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z][a-z0-9_-]*$").unwrap());
@@ -23,6 +23,31 @@ pub const MAX_ENVELOPE_WIDTH: i64 = 100_000;
 /// browser output can't drift apart from mismatched sample counts or seeds.
 pub const SIMULATION_ITERATIONS: usize = 100_000;
 pub const SIMULATION_SEED: u64 = 42;
+
+/// Simulated `(min, max)` per roll expression. The simulation is seeded, so an
+/// expression always simulates to the same envelope; remembering it lets a
+/// collection that repeats `1d6` across tables, or a host that reloads the
+/// collection on every roll, pay for each expression's simulation once.
+static SIMULATED_ENVELOPES: LazyLock<Mutex<HashMap<String, (i64, i64)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Look `roll` up in `cache`, running `simulate` and remembering its envelope
+/// on a miss. Errors are not cached, so a failing expression fails every time.
+fn memoized_envelope(
+    cache: &Mutex<HashMap<String, (i64, i64)>>,
+    roll: &str,
+    simulate: impl FnOnce() -> Result<(i64, i64), Error>,
+) -> Result<(i64, i64), Error> {
+    if let Some(&envelope) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(roll) {
+        return Ok(envelope);
+    }
+    let envelope = simulate()?;
+    cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(roll.to_string(), envelope);
+    Ok(envelope)
+}
 
 /// Narrow an i64 outcome envelope `[min, max]` to i32, rejecting envelopes too
 /// wide to allocate a coverage vec for, or whose endpoints fall outside i32.
@@ -76,15 +101,15 @@ pub fn outcome_envelope(
         None => {
             let parsed = diceman::parse(roll).map_err(|e| EnvelopeError::Dice(e.into()))?;
             crate::dice::validate_dice_counts(&parsed).map_err(EnvelopeError::Dice)?;
-            let sim = diceman::simulate_seeded(roll, SIMULATION_ITERATIONS, SIMULATION_SEED)
-                .map_err(|e| EnvelopeError::Dice(e.into()))?;
-            if sim.min < 0 || sim.max < 0 {
-                return Err(EnvelopeError::NegativeValues {
-                    min: sim.min,
-                    max: sim.max,
-                });
+            let (min, max) = memoized_envelope(&SIMULATED_ENVELOPES, roll, || {
+                let sim = diceman::simulate_seeded(roll, SIMULATION_ITERATIONS, SIMULATION_SEED)?;
+                Ok((sim.min, sim.max))
+            })
+            .map_err(EnvelopeError::Dice)?;
+            if min < 0 || max < 0 {
+                return Err(EnvelopeError::NegativeValues { min, max });
             }
-            (sim.min, sim.max)
+            (min, max)
         }
     };
     bounded_envelope(env_min, env_max).map_err(|width| EnvelopeError::TooWide {
@@ -436,6 +461,58 @@ pub fn validate_references(registry: &Registry) -> Result<(), Vec<ValidationErro
 mod tests {
     use super::*;
     use crate::models::{ChainRef, ResultBinding, ResultEntry, Table};
+
+    #[test]
+    fn memoized_envelope_simulates_each_expression_once() {
+        let cache = Mutex::new(HashMap::new());
+        let calls = std::cell::Cell::new(0);
+        let sim = |v: (i64, i64)| {
+            calls.set(calls.get() + 1);
+            Ok(v)
+        };
+        assert_eq!(
+            memoized_envelope(&cache, "1d6", || sim((1, 6))).unwrap(),
+            (1, 6)
+        );
+        assert_eq!(
+            memoized_envelope(&cache, "1d6", || sim((9, 9))).unwrap(),
+            (1, 6)
+        );
+        assert_eq!(
+            calls.get(),
+            1,
+            "a repeated expression must not simulate again"
+        );
+        assert_eq!(
+            memoized_envelope(&cache, "2d6", || sim((2, 12))).unwrap(),
+            (2, 12)
+        );
+        assert_eq!(calls.get(), 2, "a new expression simulates");
+    }
+
+    #[test]
+    fn memoized_envelope_does_not_cache_errors() {
+        let cache = Mutex::new(HashMap::new());
+        let failed = memoized_envelope(&cache, "1d6", || {
+            Err(Error::Validation(
+                ValidationError::UnsupportedDiceExpression {
+                    expr: "1d6".to_string(),
+                    reason: "test".to_string(),
+                },
+            ))
+        });
+        assert!(failed.is_err());
+        assert_eq!(
+            memoized_envelope(&cache, "1d6", || Ok((1, 6))).unwrap(),
+            (1, 6)
+        );
+    }
+
+    #[test]
+    fn outcome_envelope_is_stable_across_repeated_calls() {
+        assert_eq!(outcome_envelope("3d6", None).unwrap(), (3, 18));
+        assert_eq!(outcome_envelope("3d6", None).unwrap(), (3, 18));
+    }
 
     #[test]
     fn outcome_envelope_modifier_shifts_analytic_range() {
