@@ -25,3 +25,4 @@ session-handoff.md
 .kata.local.toml
 # roborev snapshots
 /.roborev/
+.roborev.toml
